@@ -8,11 +8,9 @@ SAMDTimer ITimer0(TIMER_TC3);
 SdFat SD;
 
 #include "RTClib.h"
-//#include "customdatetime.hpp"
+#include "customdatetime.hpp"
 // RTC declaration. Here, we are using PCF8523 RTC
 RTC_PCF8523 rtc;
-
-//CustomDateTime *cdt;
 
 // Declaration of all the constants
 const byte chipSelect = 4;
@@ -23,7 +21,8 @@ const byte Yout = A3;
 const byte Zout = A2;
 
 // Define for the CPUDIV used (3 = div 8, 4 = div 16, 5 = div 32)
-uint8_t CPUDIVP = 0x6;
+// 6 is the highest division possible in order to keep initial PPG LED blinking, not sure why
+uint8_t CPUDIVP = 0x4;
 // Flag for whether USB is connected or not, only updated once at startup
 bool USB_CONNECTED = false;
 
@@ -72,6 +71,7 @@ File myFile;
 
 // If debugp is defined data will be looged to the serial port
 void debugPrint(String data) {
+  return;
   if (!USB_CONNECTED) { return; }
   Serial.println(data);
 }
@@ -119,11 +119,13 @@ void debugPrintUSBStatus() {
 
 // Returns true if a SD card is detected
 bool startSDCard() {
-  return SD.begin(chipSelect, 12000000);
+  //return SD.begin(chipSelect, 12000000);
+  return SD.begin(chipSelect);
 }
 
 // Returns true if a USB device is attached, should be updated in the future as FNUM is probably not reliable
 bool checkUSBAttached() {
+  return false;
   if (REG_USB_DEVICE_FNUM != 0) {
     USB_CONNECTED = true;
   } else {
@@ -133,13 +135,23 @@ bool checkUSBAttached() {
 }
 
 void setup() {
+  // Check if USB is connected and disable unused peripherals if we're in battery mode
+  if (!checkUSBAttached()) {
+    //powerDisable();
+
+    PM->CPUSEL.bit.CPUDIV = CPUDIVP;
+    USB_CONNECTED = false;
+  } else {
+    USB_CONNECTED = true;
+  }
+
   // Setting up pins for the device
   pinMode(PPGSensor, INPUT);
   pinMode(Xout, INPUT);
   pinMode(Yout, INPUT);
   pinMode(Zout, INPUT);
 
-  delay(125);
+//  delay(125);
 
   // Blink if RTC is busted
   if (!rtc.begin()) {
@@ -153,47 +165,48 @@ void setup() {
 
   // Detect SD Card and start if found, just blink if not
   if (!startSDCard()) {
-    debugPrint("No SD-Card found");
-//    while (true) {
+//    debugPrint("No SD-Card found");
+    while (true) {
       analogWrite(PPGVolt, 900);  // Set LED to 2.5V (PWM duty cycle 100%)
-      delay(250);                   // Wait for 30 milliseconds
+      delay(250 >> CPUDIVP);                   // Wait for 30 milliseconds
       analogWrite(PPGVolt, 0);    // Turn off LED (PWM duty cycle 0%)
-      delay(250);                   // Wait for 30 milliseconds
-//    }
+      delay(250 >> CPUDIVP);                   // Wait for 30 milliseconds
+    }
   } else {
     // PPG Sensor LED blinking 4 times with 100ms delay
     for (int i=0; i<3; i++) {
       analogWrite(PPGVolt, 800);  // Set LED to 2.5V (PWM duty cycle 100%)
-      delay(100);                  // Wait for 100 milliseconds
+      delay(100 >> CPUDIVP);                  // Wait for 100 milliseconds
       analogWrite(PPGVolt, 0);    // Turn off LED (PWM duty cycle 0%)
-      delay(100);                  // Wait for 100 milliseconds
+      delay(100 >> CPUDIVP);                  // Wait for 100 milliseconds
     }
   }
   analogWrite(PPGVolt, 839);  // Set LED to 2.7V to measure 'PPG' or Heart rate
 
   // Check if USB is connected, if so go full CPU speed
   // could also check REG_USB_DEVICE_STATUS which is 128 when connected, but not avaliable at startup
-  
-  if (checkUSBAttached()) {
-    Serial.begin(115200);
-    Serial.println("USB detected");
-  }
+//  Serial.begin(115200);
+/*  if (checkUSBAttached()) {
+    writeToFile(",,,,,USB detected");
+    debugPrint("USB detected");
+    CPUDIVP = 1;
+    USB_CONNECTED = true;
+  } else {
+    writeToFile(",,,,,No USB detected");
+  }*/
   // Reduce clock speed, for details go to engineering notebook 
-  if (!USB_CONNECTED) { PM->CPUSEL.bit.CPUDIV = CPUDIVP; }
+//  PM->CPUSEL.bit.CPUDIV = CPUDIVP;
   // Don't write data if USB is connected 
   if (!USB_CONNECTED) { writeToFile("Date & Time,PPGVal,Xval,Yval,Zval"); }
 
   // Wait for the RTC to transition to a new second
   waitForZeroSecond();
-//  // Stop the RTC comms
-//  Wire.end();
   // Set the date & time information for the first data entry
   updateDate();
   // Start the interrupt that samples the data
   ITimer0.attachInterrupt(60, timerHandler);
 
-  // Disable unused peripherals if we're in battery mode
-  if (!USB_CONNECTED) { powerDisable(); }
+//  if (!USB_CONNECTED) { powerDisable(); }
 }
 
 // Disables various peripherals
@@ -204,14 +217,17 @@ void powerDisable() {
   // Disable DMAC, PAC1, USB & DSU
   REG_PM_APBBMASK &= ~PM_APBBMASK_DMAC & ~PM_APBBMASK_PAC1 & ~PM_APBBMASK_USB & ~PM_APBBMASK_DSU;
   // Disable DAC, TC0-7, TCC0-2, SERCOM5, EVSYS & PAC2, = I2S, AC, PTC, 
-  REG_PM_APBCMASK &= ~PM_APBCMASK_DAC & ~PM_APBCMASK_TC7 & ~PM_APBCMASK_TC6 & ~PM_APBCMASK_TC5 & ~PM_APBCMASK_TC4 & ~PM_APBCMASK_TCC0 & ~PM_APBCMASK_TCC1 & ~PM_APBCMASK_TCC2 &
+  // USED: DAC (why?)
+  REG_PM_APBCMASK &= ~PM_APBCMASK_TC7 & ~PM_APBCMASK_TC6 & ~PM_APBCMASK_TC5 & ~PM_APBCMASK_TC4 & ~PM_APBCMASK_TCC0 & ~PM_APBCMASK_TCC1 & ~PM_APBCMASK_TCC2 &
     ~PM_APBCMASK_SERCOM5 & ~PM_APBCMASK_EVSYS & ~PM_APBCMASK_PAC2 & ~PM_APBCMASK_I2S & ~PM_APBCMASK_AC & ~PM_APBCMASK_PTC;
 }
 
 // Retrieve date/time from the RTC and put it in the current position in the data array
 void updateDate() {
+/*  while(!rtc.isrunning()) {
+    rtc.begin();
+  };*/
   data[currentSecond].dt = rtc.now();
-//  data[currentSecond].dt = cdt->now();
 }
 
 // Interrupt handler for sampling sensor data
@@ -240,6 +256,7 @@ void timerHandler() {
     }
     // Update time & date for the new second
     updateDate();
+    writeToFile("update date");
   }
 
 }
@@ -263,7 +280,6 @@ void saveData() {
   }
 
   // Speed up the CPU during save
-  // Tests show that a CPUDIV of 0 draws the least power
   PM->CPUSEL.bit.CPUDIV = 0x0;
   myFile = SD.open("test3.csv", O_WRITE | O_CREAT | O_APPEND);
   
@@ -272,7 +288,6 @@ void saveData() {
   // Loop through each second of data in the range
   for (int i=low; i<high; i++) {
     // Each second will have the same timing information so we create one string that we can reuse for all data entries
-//    saveData = String(data[i].dt.year()) + "/" + String(data[i].dt.month()) + "/" + String(data[i].dt.day()) + " " + String(data[i].dt.hour()) + ":" + String(data[i].dt.minute()) + ":" + String(data[i].dt.second()) + ",";
     saveData = String(data[i].dt.year()) + "/" + String(data[i].dt.month()) + "/" + String(data[i].dt.day()) + " " + String(data[i].dt.hour()) + ":" + String(data[i].dt.minute()) + ":" + String(data[i].dt.second()) + ",";
     for (int j=0; j<updateRate; j++) {
       String saveData2 = saveData + String(data[i].values[j].PPGVal) + "," + String(data[i].values[j].Xval) + "," + String(data[i].values[j].Yval) + "," + String(data[i].values[j].Zval);
@@ -287,12 +302,9 @@ void saveData() {
 
 // This function waits for the RTC to transition to a new second
 void waitForZeroSecond() {
-  return;
   uint8_t last = rtc.now().second();
   do {
   } while(rtc.now().second() != last);
-//  DateTime dt = rtc.now();
-//  cdt = new CustomDateTime(dt.year(), dt.month(), dt.day(), dt.hour(), dt.minute(), dt.second());
 }
 
 // Read serial commands sent to the Patch
@@ -330,13 +342,11 @@ void readSerialCommands() {
 
 // Main loop
 void loop() {
-  if (!USB_CONNECTED) {
-    while (true) {
-      saveData();
-    }
-  }
-
-  if (Serial.available()) {
-    readSerialCommands();
+  while(1) {
+    saveData();
+    /*if (Serial.available()) {
+      readSerialCommands();
+    }*/
+    //delay(10);
   }
 }
