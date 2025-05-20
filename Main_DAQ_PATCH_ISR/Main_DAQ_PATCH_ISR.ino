@@ -2,16 +2,24 @@
 #include <SAMDTimerInterrupt.h>
 SAMDTimer ITimer0(TIMER_TC3);
 
+#define ENABLE_DEDICATED_SPI 1
+#define USE_SPI_ARRAY_TRANSFER 3
+#define MAINTAIN_FREE_CLUSTER_COUNT 1
+
+// USE 512 byte write buffers if possible for optimal performance!
+
 // Declaration of all the libraries
 #include <SPI.h>
 #include <SdFat.h>
 SdFat SD;
 
+#define BINWRITE
+#define BINFILE "test.bin"
+
 #include "RTClib.h"
 //#include "customdatetime.hpp"
 // RTC declaration. Here, we are using PCF8523 RTC
 RTC_PCF8523 rtc;
-
 //CustomDateTime *cdt;
 
 // Declaration of all the constants
@@ -41,21 +49,21 @@ bool USB_CONNECTED = false;
 // Sets updates per second
 #define updateRate 60
 
-// Structure for sub-second readings
+// Structure for sub-second readings - 8 bytes size
 typedef struct {
   uint16_t PPGVal, Xval, Yval, Zval;
 } singleReading;
 
-// Structure for each second containing date and time
+// Structure for each second containing date and time -6 + 8 * 60 = 486
 typedef struct {
-  DateTime dt;
+  DateTime dt;  // 6 bytes
   singleReading values[updateRate];
 } singleSecond;
 
 // total number of seconds to sample
 #define secondsToSample 30
 // main data 
-singleSecond data[secondsToSample];
+singleSecond data[secondsToSample]; // 30 * 486 = 14580
 // current second reading into {data}
 uint8_t currentSecond = 0;
 // current sub-second reading
@@ -176,12 +184,15 @@ void setup() {
   
   if (checkUSBAttached()) {
     Serial.begin(115200);
+    delay(250);
     Serial.println("USB detected");
   }
   // Reduce clock speed, for details go to engineering notebook 
   if (!USB_CONNECTED) { PM->CPUSEL.bit.CPUDIV = CPUDIVP; }
   // Don't write data if USB is connected 
+#ifndef BINWRITE
   if (!USB_CONNECTED) { writeToFile("Date & Time,PPGVal,Xval,Yval,Zval"); }
+#endif
 
   // Wait for the RTC to transition to a new second
   waitForZeroSecond();
@@ -190,10 +201,56 @@ void setup() {
   // Set the date & time information for the first data entry
   updateDate();
   // Start the interrupt that samples the data
-  ITimer0.attachInterrupt(60, timerHandler);
 
   // Disable unused peripherals if we're in battery mode
-  if (!USB_CONNECTED) { powerDisable(); }
+  if (!USB_CONNECTED) { 
+    ITimer0.attachInterrupt(60, timerHandler);
+    powerDisable(); 
+  }
+  
+#ifdef BINWRITE
+  if (USB_CONNECTED) { convertBinFile(); }
+#endif
+}
+
+void convertBinFile() {
+  if (SD.exists(BINFILE)) {
+    Serial.println("Found binary file, converting...");
+    analogWrite(PPGVolt, 800);
+
+    File binFile = SD.open(BINFILE);
+    myFile = SD.open("testconverted.csv", O_WRITE | O_CREAT);
+    myFile.println("Date & Time,PPGVal,Xval,Yval,Zval");
+    int length = 0;
+    String saveData;
+    uint16_t dataLength = sizeof(data[0]) * (secondsToSample / 2);
+    while (binFile.available()) {
+      binFile.read(&data, dataLength);
+      // Loop through each second of data in the range
+      Serial.println("Writing block of " + String(dataLength) + " bytes. ");
+      for (int i=0; i<(secondsToSample / 2); i++) {
+        // Each second will have the same timing information so we create one string that we can reuse for all data entries
+    //    saveData = String(data[i].dt.year()) + "/" + String(data[i].dt.month()) + "/" + String(data[i].dt.day()) + " " + String(data[i].dt.hour()) + ":" + String(data[i].dt.minute()) + ":" + String(data[i].dt.second()) + ",";
+        saveData = String(data[i].dt.year()) + "/" + String(data[i].dt.month()) + "/" + String(data[i].dt.day()) + " " + String(data[i].dt.hour()) + ":" + String(data[i].dt.minute()) + ":" + String(data[i].dt.second()) + ",";
+        for (int j=0; j<updateRate; j++) {
+          String saveData2 = saveData + String(data[i].values[j].PPGVal) + "," + String(data[i].values[j].Xval) + "," + String(data[i].values[j].Yval) + "," + String(data[i].values[j].Zval);
+          myFile.println(saveData2);
+        }
+      }
+    }
+    myFile.close();
+    binFile.close();    
+
+    Serial.println("Conversion done");
+    for (int i=0; i<10; i++) {
+        analogWrite(PPGVolt, 800);  // Set LED to 2.5V (PWM duty cycle 100%)
+        delay(100);                  // Wait for 100 milliseconds
+        analogWrite(PPGVolt, 0);    // Turn off LED (PWM duty cycle 0%)
+        delay(100);                  // Wait for 100 milliseconds
+    }
+  } else {
+    Serial.println("No binary file to convert");
+  }
 }
 
 // Disables various peripherals
@@ -265,8 +322,9 @@ void saveData() {
   // Speed up the CPU during save
   // Tests show that a CPUDIV of 0 draws the least power
   PM->CPUSEL.bit.CPUDIV = 0x0;
+
+#ifndef BINWRITE  
   myFile = SD.open("test3.csv", O_WRITE | O_CREAT | O_APPEND);
-  
   int length = 0;
   String saveData;
   // Loop through each second of data in the range
@@ -279,6 +337,10 @@ void saveData() {
       myFile.println(saveData2);
     }
   }
+#else
+  myFile = SD.open(BINFILE, O_WRITE | O_CREAT | O_APPEND);
+  myFile.write(&data[low], sizeof(data[0]) * (secondsToSample / 2));
+#endif
   myFile.close();
   // Slow down the CPU again
   PM->CPUSEL.bit.CPUDIV = CPUDIVP;
@@ -324,6 +386,10 @@ void readSerialCommands() {
     case 'q': {
       DateTime dt = rtc.now();
       Serial.println("Retrieved data - Month: " + String(dt.month()) + " Day: " + String(dt.day()) + " Year " + String(dt.year()) + " Hour " + String(dt.hour()) + " Minute " + String(dt.minute()) + " Second " + String(dt.second()));
+    }
+    case 'd': {
+      DateTime dt = rtc.now();
+      Serial.println("DateTime: " + String(sizeof(dt)) + " bytes");
     }
   }
 }
