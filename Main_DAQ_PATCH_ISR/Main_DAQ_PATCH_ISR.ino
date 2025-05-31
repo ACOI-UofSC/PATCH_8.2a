@@ -14,7 +14,9 @@ SAMDTimer ITimer0(TIMER_TC3);
 SdFat SD;
 
 #define BINWRITE
-#define BINFILE "test.bin"
+#define BINFILEPREFIX "test"
+String BINFILE = "test.bin";
+//#define BINFILE "test.bin"
 
 #include "RTClib.h"
 //#include "customdatetime.hpp"
@@ -34,6 +36,8 @@ const byte Zout = A2;
 uint8_t CPUDIVP = 0x6;
 // Flag for whether USB is connected or not, only updated once at startup
 bool USB_CONNECTED = false;
+// Placeholder for the latest REG_USB_DEVICE_FNUM, should always be '0' if USB is never connected
+int usb_fnum = 0;
 
 /*
   The interrupt is called every 1S / updateRate
@@ -47,7 +51,7 @@ bool USB_CONNECTED = false;
 */
 
 // Sets updates per second
-#define updateRate 60
+#define updateRate 50
 
 // Structure for sub-second readings - 8 bytes size
 typedef struct {
@@ -130,13 +134,31 @@ bool startSDCard() {
   return SD.begin(chipSelect, 12000000);
 }
 
+void setBinFile() {
+  String binFileName;
+  int it = 0;
+  char itS[3];
+  do {
+    snprintf(itS, 3, "%02d", it);
+    binFileName = String(BINFILEPREFIX) + "_" + String(itS) + ".bin";
+    debugPrint("See if exists " + binFileName);
+    it++;
+  } while (SD.exists(binFileName));
+  debugPrint("No file with name found, continuing");
+  BINFILE = binFileName;
+}
+
 // Returns true if a USB device is attached, should be updated in the future as FNUM is probably not reliable
 bool checkUSBAttached() {
-  if (REG_USB_DEVICE_FNUM != 0) {
-    USB_CONNECTED = true;
-  } else {
+  int temp = REG_USB_DEVICE_FNUM;
+  if (temp == usb_fnum) {
     USB_CONNECTED = false;
+  } else {
+    USB_CONNECTED = true;
   }
+  usb_fnum = temp;
+  // This function will not work repeatedly unless this is here
+  delay(1);
   return USB_CONNECTED;
 }
 
@@ -192,6 +214,8 @@ void setup() {
   // Don't write data if USB is connected 
 #ifndef BINWRITE
   if (!USB_CONNECTED) { writeToFile("Date & Time,PPGVal,Xval,Yval,Zval"); }
+#else
+  setBinFile();
 #endif
 
   // Wait for the RTC to transition to a new second
@@ -200,17 +224,19 @@ void setup() {
 //  Wire.end();
   // Set the date & time information for the first data entry
   updateDate();
-  // Start the interrupt that samples the data
 
-  // Disable unused peripherals if we're in battery mode
+  // Start the interrupt that samples the data and
+  // disable unused peripherals if we're in battery mode
   if (!USB_CONNECTED) { 
     ITimer0.attachInterrupt(60, timerHandler);
     powerDisable(); 
   }
-  
+
+/*
 #ifdef BINWRITE
   if (USB_CONNECTED) { convertBinFile(); }
 #endif
+*/
 }
 
 void convertBinFile() {
@@ -394,6 +420,9 @@ void readSerialCommands() {
   }
 }
 
+bool previousUSB_CONNECTED = false;
+bool usbStateChanged = false;
+
 // Main loop
 void loop() {
   if (!USB_CONNECTED) {
@@ -405,4 +434,46 @@ void loop() {
   if (Serial.available()) {
     readSerialCommands();
   }
+
+/*
+  // Testing switching from USBMODE to NORMAL on the fly
+  // Doesn't work because CPUDIV needs to be set to a speed were USB doesn't function anymore hence frames will not be detected i.e. no USB detection
+
+  checkUSBAttached();
+  if (previousUSB_CONNECTED != USB_CONNECTED) {
+    usbStateChanged = true;
+    previousUSB_CONNECTED = USB_CONNECTED;
+    debugPrint("USB State changed");
+  }
+
+  if (!USB_CONNECTED) {
+    PM->CPUSEL.bit.CPUDIV = CPUDIVP;
+    delay(990);
+    if (usbStateChanged) {
+      ITimer0.attachInterrupt(60, timerHandler);    
+      waitForZeroSecond();
+      updateDate();
+    }
+//    while (!USB_CONNECTED) { 
+    saveData();
+    PM->CPUSEL.bit.CPUDIV = 0;
+    delay(10);
+//    }
+  } else {
+    if (usbStateChanged) { 
+      PM->CPUSEL.bit.CPUDIV = 0;
+      ITimer0.stopTimer(); 
+    }
+    if (Serial.available()) {
+      readSerialCommands();
+    }
+    
+    analogWrite(PPGVolt, 800);  // Set LED to 2.5V (PWM duty cycle 100%)
+    delay(100);                  // Wait for 100 milliseconds
+    analogWrite(PPGVolt, 0);    // Turn off LED (PWM duty cycle 0%)
+    delay(100);                  // Wait for 100 milliseconds
+    checkUSBAttached();
+  }
+*/
+
 }

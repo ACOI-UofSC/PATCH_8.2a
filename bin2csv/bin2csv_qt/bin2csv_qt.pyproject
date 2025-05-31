@@ -1,0 +1,6 @@
+{
+    "files": [
+        "bin2csv_qt.py",
+        "form.ui"
+    ]
+}
