@@ -13,7 +13,15 @@ SAMDTimer ITimer0(TIMER_TC3);
 #include <SdFat.h>
 SdFat SD;
 
+// Sets updates per second
+#define updateRate 45
+
+// Enables USB debug messages and writing
+//#define DEBUG
+
+// comment out to generate CSV instead of BIN
 #define BINWRITE
+
 #define BINFILEPREFIX "test"
 String BINFILE = "test.bin";
 //#define BINFILE "test.bin"
@@ -50,24 +58,21 @@ int usb_fnum = 0;
   only HALF of the data is saved at any time, namely whichever half the sensor is not currently populating
 */
 
-// Sets updates per second
-#define updateRate 50
-
 // Structure for sub-second readings - 8 bytes size
 typedef struct {
   uint16_t PPGVal, Xval, Yval, Zval;
 } singleReading;
 
-// Structure for each second containing date and time -6 + 8 * 60 = 486
 typedef struct {
   DateTime dt;  // 6 bytes
   singleReading values[updateRate];
 } singleSecond;
 
-// total number of seconds to sample
-#define secondsToSample 30
+// total number of seconds to sample - WILL NOT WORK IF UNEVEN NUMBER
+// Max is whatever fits into the existing memory (~22K bytes)
+#define secondsToSample 60
 // main data 
-singleSecond data[secondsToSample]; // 30 * 486 = 14580
+singleSecond data[secondsToSample];
 // current second reading into {data}
 uint8_t currentSecond = 0;
 // current sub-second reading
@@ -209,11 +214,19 @@ void setup() {
     delay(250);
     Serial.println("USB detected");
   }
+
+#ifdef DEBUG
+  CPUDIVP = 0;
+#endif
   // Reduce clock speed, for details go to engineering notebook 
   if (!USB_CONNECTED) { PM->CPUSEL.bit.CPUDIV = CPUDIVP; }
   // Don't write data if USB is connected 
 #ifndef BINWRITE
+#ifndef DEBUG
   if (!USB_CONNECTED) { writeToFile("Date & Time,PPGVal,Xval,Yval,Zval"); }
+#else
+  writeToFile("Date & Time,PPGVal,Xval,Yval,Zval");
+#endif
 #else
   setBinFile();
 #endif
@@ -227,11 +240,14 @@ void setup() {
 
   // Start the interrupt that samples the data and
   // disable unused peripherals if we're in battery mode
+#ifndef DEBUG
   if (!USB_CONNECTED) { 
-    ITimer0.attachInterrupt(60, timerHandler);
+    ITimer0.attachInterrupt(updateRate, timerHandler);
     powerDisable(); 
   }
-
+#else
+    ITimer0.attachInterrupt(updateRate, timerHandler);
+#endif
 /*
 #ifdef BINWRITE
   if (USB_CONNECTED) { convertBinFile(); }
@@ -253,7 +269,7 @@ void convertBinFile() {
     while (binFile.available()) {
       binFile.read(&data, dataLength);
       // Loop through each second of data in the range
-      Serial.println("Writing block of " + String(dataLength) + " bytes. ");
+      debugPrint("Writing block of " + String(dataLength) + " bytes. ");
       for (int i=0; i<(secondsToSample / 2); i++) {
         // Each second will have the same timing information so we create one string that we can reuse for all data entries
     //    saveData = String(data[i].dt.year()) + "/" + String(data[i].dt.month()) + "/" + String(data[i].dt.day()) + " " + String(data[i].dt.hour()) + ":" + String(data[i].dt.minute()) + ":" + String(data[i].dt.second()) + ",";
@@ -305,6 +321,7 @@ void timerHandler() {
   data[currentSecond].values[currentReading].Yval = analogRead(Yout);
   data[currentSecond].values[currentReading].Zval = analogRead(Zout);
 
+  //debugPrint("Reading data for second " + String(currentSecond) + " interval " + String(currentReading));
   currentReading++;
   // If we have sampled all data for a single second, go to the next second.
   // Do a check if we're at {secondsToSample}, set {saveFlag} for the upper range and reset the index to the first (0) second in the data
@@ -330,10 +347,11 @@ void timerHandler() {
 // Save data to disk
 void saveData() {
   // Don't write data if USB is connected
+  #ifndef DEBUG
   if (USB_CONNECTED) { return; }
+  #endif
   // If we got here without a {saveFlag}, return
   if (!saveFlag) { return; }
-  debugPrint("Saving.. ");
   //debugPrintUSBStatus();
   uint8_t low, high;
   // Check which range to save
@@ -349,6 +367,7 @@ void saveData() {
   // Tests show that a CPUDIV of 0 draws the least power
   PM->CPUSEL.bit.CPUDIV = 0x0;
 
+  debugPrint("Saving range " + String(low) + " to " + String(high));
 #ifndef BINWRITE  
   myFile = SD.open("test3.csv", O_WRITE | O_CREAT | O_APPEND);
   int length = 0;
@@ -365,7 +384,9 @@ void saveData() {
   }
 #else
   myFile = SD.open(BINFILE, O_WRITE | O_CREAT | O_APPEND);
-  myFile.write(&data[low], sizeof(data[0]) * (secondsToSample / 2));
+  int size = sizeof(data[0]) * (secondsToSample / 2);
+  debugPrint("Chunk size " + String(size) + " bytes");
+  myFile.write(&data[low], size);
 #endif
   myFile.close();
   // Slow down the CPU again
@@ -425,11 +446,15 @@ bool usbStateChanged = false;
 
 // Main loop
 void loop() {
+#ifndef DEBUG
   if (!USB_CONNECTED) {
     while (true) {
       saveData();
     }
   }
+#else
+  saveData();
+#endif
 
   if (Serial.available()) {
     readSerialCommands();
@@ -450,7 +475,7 @@ void loop() {
     PM->CPUSEL.bit.CPUDIV = CPUDIVP;
     delay(990);
     if (usbStateChanged) {
-      ITimer0.attachInterrupt(60, timerHandler);    
+      ITimer0.attachInterrupt(updateRate, timerHandler);    
       waitForZeroSecond();
       updateDate();
     }

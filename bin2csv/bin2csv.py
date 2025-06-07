@@ -7,7 +7,7 @@ from bin2csv_qt.ui_form import Ui_bin2csv_qt
 from PySide6.QtWidgets import QFileDialog
 
 
-readingsPerSecond = 50
+readingsPerSecond = 45
 binaryFileBlockSize = (6 + 8 * readingsPerSecond)
 binaryFilePrefix = "test_"
 
@@ -82,6 +82,9 @@ class bin2csv_qt(QWidget):
 
         convertFiles(self.ui.lineEditInputDir.text(), self.ui.lineEditOutputFile.text())
 
+    def setSampleRate(self):
+        global readingsPerSecond
+        readingsPerSecond = self.ui.spinBoxSampleRate.value()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
@@ -91,6 +94,8 @@ if __name__ == "__main__":
     ui.ui.pushButtonInputDirBrowse.pressed.connect(ui.browseInputDir)
     ui.ui.pushButtonOutputFileBrowse.pressed.connect(ui.browseOutputFile)
     ui.ui.pushButtonConvert.pressed.connect(ui.convert)
+    ui.ui.spinBoxSampleRate.setValue(readingsPerSecond)
+    ui.ui.spinBoxSampleRate.valueChanged.connect(ui.setSampleRate)
 
     sys.exit(app.exec())
 
