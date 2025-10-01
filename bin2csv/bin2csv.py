@@ -1,14 +1,20 @@
 import os
 #from bin2csv_qt import bin2csv_qt
 import sys
+import wave
+import struct
 
 from PySide6.QtWidgets import QApplication, QWidget
 from bin2csv_qt.ui_form import Ui_bin2csv_qt
 from PySide6.QtWidgets import QFileDialog
 
-
 readingsPerSecond = 45
-binaryFileBlockSize = (6 + 8 * readingsPerSecond)
+binaryFileBlockSize = 6 + (8 * readingsPerSecond)
+samplerange = 1024
+
+writewav = False
+wav_file: wave
+
 binaryFilePrefix = "test_"
 
 csvFileDir = ""
@@ -21,6 +27,13 @@ def convertFiles(dir, output):
     #csvFile = open(csvFileDir + csvFileName, 'w')
     csvFile = open(output, 'w')
     csvFile.write("Date & Time,PPGVal,Xval,Yval,Zval\n")
+
+ #   if writewav:
+ #       global wav_file
+ #       wav_file = wave.open(output + ".wav", mode="wb")
+ #       wav_file.setnchannels(1)
+ #       wav_file.setsampwidth(2)
+ #       wav_file.setframerate(readingsPerSecond)
 
     it = 0
     while(True):
@@ -37,6 +50,8 @@ def openFile(name, csvFile):
         file = open(name, 'rb')
     except:
         return False
+    global wav_file
+    wavbuffer = []
 
     try:
         addDebug("Converting data..\n")
@@ -45,18 +60,29 @@ def openFile(name, csvFile):
             chunk = file.read(binaryFileBlockSize)
 
             for it in range(0, readingsPerSecond):
-                csvFile.write(str(2000 + chunk[0]) + "/" + str(chunk[1]) + "/" + str(chunk[2]) + " ")
-                csvFile.write(str(chunk[3]) + ":" + str(chunk[4]) + ":" + str(chunk[5]))
+                csvFile.write(str(2000 + chunk[0]) + "-" + str(chunk[1]).zfill(2) + "-" + str(chunk[2]).zfill(2) + " ")
+                csvFile.write(str(chunk[3]).zfill(2) + ":" + str(chunk[4]).zfill(2) + ":" + str(chunk[5]).zfill(2))
+#                if writewav:
+#                    smp = chunk[6 + it * 8] + chunk[6 + it * 8 + 1] * 256
+#                    sample = int((smp - (samplerange / 2)) * (65536 / samplerange))
+#                    if (sample < -32767) or (sample > 32767):
+#                        pass
+#                    wavbuffer.append( sample )
                 for column in range(0,4):
                     readPointer = 6 + it * 8 + column * 2
                     csvFile.write("," + str(chunk[readPointer] + chunk[readPointer + 1] * 256))
                 csvFile.write("\n")
             if not chunk:
                 break
-#        print("Done")
         file.close()
+#        if writewav:
+#            wav_file.writeframes(struct.pack("<h", wavbuffer))
         return chunk
     except:
+        file.close()
+#        if writewav:
+#            for samples in wavbuffer:
+#                wav_file.writeframes( struct.pack("<h", int(samples)) )
         return True
 
 class bin2csv_qt(QWidget):
@@ -85,6 +111,8 @@ class bin2csv_qt(QWidget):
     def setSampleRate(self):
         global readingsPerSecond
         readingsPerSecond = self.ui.spinBoxSampleRate.value()
+        global binaryFileBlockSize
+        binaryFileBlockSize= 6 + (8 * readingsPerSecond)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
