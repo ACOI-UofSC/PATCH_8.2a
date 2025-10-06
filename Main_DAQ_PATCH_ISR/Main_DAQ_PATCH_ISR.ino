@@ -40,6 +40,8 @@ const byte Xout = A4;
 const byte Yout = A3;
 const byte Zout = A2;
 
+const uint16_t PPGVOut = 839;  // Supposed to be 839 = Set LED to 2.7V to measure 'PPG' or Heart rate
+
 // Define for the CPUDIV used (3 = div 8, 4 = div 16, 5 = div 32)
 uint8_t CPUDIVP = 0x6;
 // Flag for whether USB is connected or not, only updated once at startup
@@ -179,7 +181,7 @@ void setup() {
   // Blink if RTC is busted
   if (!rtc.begin()) {
     while(true) {
-      analogWrite(PPGVolt, 800);  // Set LED to 2.5V (PWM duty cycle 100%)
+      analogWrite(PPGVolt, PPGVOut);  // Set LED to 2.5V (PWM duty cycle 100%)
       delay(300);                  // Wait for 100 milliseconds
       analogWrite(PPGVolt, 0);    // Turn off LED (PWM duty cycle 0%)
       delay(100);                  // Wait for 100 milliseconds
@@ -189,22 +191,20 @@ void setup() {
   // Detect SD Card and start if found, just blink if not
   if (!startSDCard()) {
     debugPrint("No SD-Card found");
-//    while (true) {
-      analogWrite(PPGVolt, 900);  // Set LED to 2.5V (PWM duty cycle 100%)
-      delay(250);                   // Wait for 30 milliseconds
-      analogWrite(PPGVolt, 0);    // Turn off LED (PWM duty cycle 0%)
-      delay(250);                   // Wait for 30 milliseconds
-//    }
+    analogWrite(PPGVolt, PPGVOut);  // Set LED to 2.5V (PWM duty cycle 100%)
+    delay(250);                   // Wait for 30 milliseconds
+    analogWrite(PPGVolt, 0);    // Turn off LED (PWM duty cycle 0%)
+    delay(250);                   // Wait for 30 milliseconds
   } else {
     // PPG Sensor LED blinking 4 times with 100ms delay
     for (int i=0; i<3; i++) {
-      analogWrite(PPGVolt, 800);  // Set LED to 2.5V (PWM duty cycle 100%)
+      analogWrite(PPGVolt, PPGVOut);  // Set LED to 2.5V (PWM duty cycle 100%)
       delay(100);                  // Wait for 100 milliseconds
       analogWrite(PPGVolt, 0);    // Turn off LED (PWM duty cycle 0%)
       delay(100);                  // Wait for 100 milliseconds
     }
   }
-  analogWrite(PPGVolt, 839);  // Set LED to 2.7V to measure 'PPG' or Heart rate
+  analogWrite(PPGVolt, PPGVOut);  // Set LED to 2.7V to measure 'PPG' or Heart rate
 
   // Check if USB is connected, if so go full CPU speed
   // could also check REG_USB_DEVICE_STATUS which is 128 when connected, but not avaliable at startup
@@ -258,7 +258,7 @@ void setup() {
 void convertBinFile() {
   if (SD.exists(BINFILE)) {
     Serial.println("Found binary file, converting...");
-    analogWrite(PPGVolt, 800);
+    analogWrite(PPGVolt, PPGVOut);
 
     File binFile = SD.open(BINFILE);
     myFile = SD.open("testconverted.csv", O_WRITE | O_CREAT);
@@ -285,7 +285,7 @@ void convertBinFile() {
 
     Serial.println("Conversion done");
     for (int i=0; i<10; i++) {
-        analogWrite(PPGVolt, 800);  // Set LED to 2.5V (PWM duty cycle 100%)
+        analogWrite(PPGVolt, PPGVOut);  // Set LED to 2.5V (PWM duty cycle 100%)
         delay(100);                  // Wait for 100 milliseconds
         analogWrite(PPGVolt, 0);    // Turn off LED (PWM duty cycle 0%)
         delay(100);                  // Wait for 100 milliseconds
