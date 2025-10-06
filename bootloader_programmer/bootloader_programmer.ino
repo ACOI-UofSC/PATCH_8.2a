@@ -47,7 +47,7 @@ void setup() {
     error("Card failed, or not present");
   }
   Serial.println("Card initialized");
-
+ 
   FsFile dataFile = SD.open(FILENAME);
  
   if(!dataFile){
