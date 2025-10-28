@@ -1,3 +1,5 @@
+// Has to be compiled with Feather M0 bootloader!!!
+
 #define USING_TIMER_TC3 true
 #include <SAMDTimerInterrupt.h>
 SAMDTimer ITimer0(TIMER_TC3);
@@ -10,11 +12,19 @@ SAMDTimer ITimer0(TIMER_TC3);
 
 // Declaration of all the libraries
 #include <SPI.h>
+// If the compiler complains about SDFAT, chances are you are using the wrong bootloader / board selection
 #include <SdFat.h>
 SdFat SD;
 
+#include <wiring_private.h>
+
 // Sets updates per second
 #define updateRate 45
+
+// Bit depth of ADC configuration for PPG and accelerometer
+#define readBits 22
+// divider = 2^readBits if readBits > 16
+#define divider 64
 
 // Enables USB debug messages and writing
 //#define DEBUG
@@ -24,7 +34,6 @@ SdFat SD;
 
 #define BINFILEPREFIX "test"
 String BINFILE = "test.bin";
-//#define BINFILE "test.bin"
 
 #include "RTClib.h"
 //#include "customdatetime.hpp"
@@ -40,14 +49,19 @@ const byte Xout = A4;
 const byte Yout = A3;
 const byte Zout = A2;
 
-const uint16_t PPGVOut = 839;  // Supposed to be 839 = Set LED to 2.7V to measure 'PPG' or Heart rate
+const byte usbDetectPin = (0UL);
+//const uint16_t PPGVOut = 839;  // Supposed to be 839 = Set LED to 2.7V to measure 'PPG' or Heart rate - FOR 3.3V!!!
+const uint16_t PPGVOut = 1023; // For < 2.8V Vin
 
 // Define for the CPUDIV used (3 = div 8, 4 = div 16, 5 = div 32)
-uint8_t CPUDIVP = 0x6;
+uint8_t CPUDIVNOUSB = 0x6;
+uint8_t CPUDIVP = CPUDIVNOUSB;
 // Flag for whether USB is connected or not, only updated once at startup
 bool USB_CONNECTED = false;
 // Placeholder for the latest REG_USB_DEVICE_FNUM, should always be '0' if USB is never connected
 int usb_fnum = 0;
+// Flag to detect RTC, need to be here in order to keep everything going even if the RTC is failing so that it doesn't brick
+bool RTCActive = false;
 
 /*
   The interrupt is called every 1S / updateRate
@@ -69,10 +83,9 @@ typedef struct {
   DateTime dt;  // 6 bytes
   singleReading values[updateRate];
 } singleSecond;
-
 // total number of seconds to sample - WILL NOT WORK IF UNEVEN NUMBER
 // Max is whatever fits into the existing memory (~22K bytes)
-#define secondsToSample 60
+#define secondsToSample 60 //70 max for 45hz rate -- 150 for 20hz rate -- 50 max for 60hz rate
 // main data 
 singleSecond data[secondsToSample];
 // current second reading into {data}
@@ -107,6 +120,14 @@ void writeToFile(String data) {
   myFile = SD.open("test3.csv", O_WRITE | O_CREAT | O_APPEND);
   myFile.println(data);
   myFile.close();
+}
+
+int readADC(byte port) {
+  int a = analogRead(port);
+  a = (a / divider);
+  if (a < 0) { a= 0; }
+  if (a > 65535) { a = 65535; }
+  return a;
 }
 
 // Tests for various USB registers
@@ -157,6 +178,9 @@ void setBinFile() {
 
 // Returns true if a USB device is attached, should be updated in the future as FNUM is probably not reliable
 bool checkUSBAttached() {
+  /*
+      THIS CODE WORKS WITHOUT AN EXTERNAL PIN CONNECTED TO VUSB, CHECKS IF PROCESSED PACKAGES > 0
+  
   int temp = REG_USB_DEVICE_FNUM;
   if (temp == usb_fnum) {
     USB_CONNECTED = false;
@@ -166,26 +190,80 @@ bool checkUSBAttached() {
   usb_fnum = temp;
   // This function will not work repeatedly unless this is here
   delay(1);
+  */
+
+  USB_CONNECTED = digitalRead(usbDetectPin);
   return USB_CONNECTED;
 }
 
+bool checkUSBAttachedChanged() {
+  bool now = digitalRead(usbDetectPin);
+  if (now != USB_CONNECTED) {
+    USB_CONNECTED = now;
+    return true;
+  }
+  return false;
+}
+
 void setup() {
+  SYSCTRL->BOD33.reg = (
+      // This sets the minimum voltage level to about 2.9V. See datasheet table 37-21.
+      // Voltage threshold is about 1.5V + LEVEL * 34mV. See "Electrical Characteristics" in datasheet.
+      // 39 is about 2.8V, and is a standard measured value in the datasheet.
+      // External flash chips usually require at least 2.7V.
+      SYSCTRL_BOD33_LEVEL(0) |
+      // Since the program is waiting for the voltage to rise,
+      // don't reset the microcontroller if the voltage is too low.
+      SYSCTRL_BOD33_ACTION_NONE |
+      // Enable hysteresis to better deal with noisy power supplies and voltage transients.
+      SYSCTRL_BOD33_HYST);
+
+  // Enable the brown-out detector and then wait for the voltage level to settle.
+  SYSCTRL->BOD33.bit.ENABLE = 1;
+  while (!SYSCTRL->PCLKSR.bit.BOD33RDY) {}
+
   // Setting up pins for the device
   pinMode(PPGSensor, INPUT);
   pinMode(Xout, INPUT);
   pinMode(Yout, INPUT);
   pinMode(Zout, INPUT);
+  pinMode(usbDetectPin, INPUT);
+  pinPeripheral(usbDetectPin, PIO_INPUT);
+
+
+  // Init all data to discover errors
+  for (int i=0; i<secondsToSample; i++) {
+    for (int j=0; j<updateRate; j++) {
+      data[i].values[j].PPGVal = 999;
+      data[i].values[j].Xval = 999;
+      data[i].values[j].Yval = 999;
+      data[i].values[j].Zval = 999;
+    }
+  }
+
+  //ADC->CTRLB.bit.RESSEL = 0;
+  analogReadResolution(readBits);
 
   delay(125);
+  Serial.begin(115200);
+  delay(250);
 
   // Blink if RTC is busted
-  if (!rtc.begin()) {
+/*  if (!rtc.begin()) {
     while(true) {
       analogWrite(PPGVolt, PPGVOut);  // Set LED to 2.5V (PWM duty cycle 100%)
       delay(300);                  // Wait for 100 milliseconds
       analogWrite(PPGVolt, 0);    // Turn off LED (PWM duty cycle 0%)
       delay(100);                  // Wait for 100 milliseconds
     }
+  }
+*/
+
+  if (rtc.begin()) {
+    RTCActive = true;
+    debugPrint("RTC found.");
+  } else {
+    debugPrint("No connection to RTC! Data will not be logged!");
   }
 
   // Detect SD Card and start if found, just blink if not
@@ -208,19 +286,21 @@ void setup() {
 
   // Check if USB is connected, if so go full CPU speed
   // could also check REG_USB_DEVICE_STATUS which is 128 when connected, but not avaliable at startup
-  
   if (checkUSBAttached()) {
-    Serial.begin(115200);
-    delay(250);
     Serial.println("USB detected");
+  } else {
+    Serial.end();
   }
-
+  
+  // Reduce clock IF USB not connected, USB won't work with too low clock speed
+  if (USB_CONNECTED) { CPUDIVP = 0; } else { CPUDIVP = CPUDIVNOUSB; }
+  // If DEBUG then don't reduce speed
 #ifdef DEBUG
   CPUDIVP = 0;
 #endif
-  // Reduce clock speed, for details go to engineering notebook 
-  if (!USB_CONNECTED) { PM->CPUSEL.bit.CPUDIV = CPUDIVP; }
-  // Don't write data if USB is connected 
+  PM->CPUSEL.bit.CPUDIV = CPUDIVP;
+
+  // Initiate file write conditionally depending on whether binary or text is defined
 #ifndef BINWRITE
 #ifndef DEBUG
   if (!USB_CONNECTED) { writeToFile("Date & Time,PPGVal,Xval,Yval,Zval"); }
@@ -233,26 +313,11 @@ void setup() {
 
   // Wait for the RTC to transition to a new second
   waitForZeroSecond();
-//  // Stop the RTC comms
-//  Wire.end();
-  // Set the date & time information for the first data entry
+
+// Set the date & time information for the first data entry
   updateDate();
 
-  // Start the interrupt that samples the data and
-  // disable unused peripherals if we're in battery mode
-#ifndef DEBUG
-  if (!USB_CONNECTED) { 
-    ITimer0.attachInterrupt(updateRate, timerHandler);
-    powerDisable(); 
-  }
-#else
-    ITimer0.attachInterrupt(updateRate, timerHandler);
-#endif
-/*
-#ifdef BINWRITE
-  if (USB_CONNECTED) { convertBinFile(); }
-#endif
-*/
+  ITimer0.attachInterrupt(updateRate, timerHandler);
 }
 
 void convertBinFile() {
@@ -309,17 +374,20 @@ void powerDisable() {
 
 // Retrieve date/time from the RTC and put it in the current position in the data array
 void updateDate() {
+  if (!RTCActive) { return; }
   data[currentSecond].dt = rtc.now();
 //  data[currentSecond].dt = cdt->now();
 }
 
+bool updateFlag = false;
+
 // Interrupt handler for sampling sensor data
 // Throws a flag if we need to save to disk
 void timerHandler() {
-  data[currentSecond].values[currentReading].PPGVal = analogRead(PPGSensor);
-  data[currentSecond].values[currentReading].Xval = analogRead(Xout);
-  data[currentSecond].values[currentReading].Yval = analogRead(Yout);
-  data[currentSecond].values[currentReading].Zval = analogRead(Zout);
+  data[currentSecond].values[currentReading].PPGVal = readADC(PPGSensor);
+  data[currentSecond].values[currentReading].Xval = readADC(Xout);
+  data[currentSecond].values[currentReading].Yval = readADC(Yout);
+  data[currentSecond].values[currentReading].Zval = readADC(Zout);
 
   //debugPrint("Reading data for second " + String(currentSecond) + " interval " + String(currentReading));
   currentReading++;
@@ -342,6 +410,7 @@ void timerHandler() {
     updateDate();
   }
 
+  updateFlag = true;
 }
 
 // Save data to disk
@@ -375,7 +444,7 @@ void saveData() {
   // Loop through each second of data in the range
   for (int i=low; i<high; i++) {
     // Each second will have the same timing information so we create one string that we can reuse for all data entries
-//    saveData = String(data[i].dt.year()) + "/" + String(data[i].dt.month()) + "/" + String(data[i].dt.day()) + " " + String(data[i].dt.hour()) + ":" + String(data[i].dt.minute()) + ":" + String(data[i].dt.second()) + ",";
+
     saveData = String(data[i].dt.year()) + "/" + String(data[i].dt.month()) + "/" + String(data[i].dt.day()) + " " + String(data[i].dt.hour()) + ":" + String(data[i].dt.minute()) + ":" + String(data[i].dt.second()) + ",";
     for (int j=0; j<updateRate; j++) {
       String saveData2 = saveData + String(data[i].values[j].PPGVal) + "," + String(data[i].values[j].Xval) + "," + String(data[i].values[j].Yval) + "," + String(data[i].values[j].Zval);
@@ -396,7 +465,8 @@ void saveData() {
 
 // This function waits for the RTC to transition to a new second
 void waitForZeroSecond() {
-  return;
+  //return; // ??? WHAT
+  if (!RTCActive) { return; }
   uint8_t last = rtc.now().second();
   do {
   } while(rtc.now().second() != last);
@@ -406,6 +476,7 @@ void waitForZeroSecond() {
 
 // Read serial commands sent to the Patch
 void readSerialCommands() {
+  if (!RTCActive) { return; }
   String commands = "";
   commands = Serial.readString();
   debugPrint(commands);
@@ -443,62 +514,25 @@ void readSerialCommands() {
 
 bool previousUSB_CONNECTED = false;
 bool usbStateChanged = false;
+bool usbdet = false;
 
-// Main loop
 void loop() {
-#ifndef DEBUG
-  if (!USB_CONNECTED) {
-    while (true) {
-      saveData();
+  do {
+    saveData();
+    // Check if USB has been connected, if so speed up
+    if (checkUSBAttachedChanged()) {
+      if (USB_CONNECTED) {
+        CPUDIVP = 0;
+      } else {
+        CPUDIVP = CPUDIVNOUSB;
+      }
+      PM->CPUSEL.bit.CPUDIV = CPUDIVP;
     }
-  }
-#else
-  saveData();
-#endif
+  } while(!USB_CONNECTED);
 
   if (Serial.available()) {
     readSerialCommands();
   }
 
-/*
-  // Testing switching from USBMODE to NORMAL on the fly
-  // Doesn't work because CPUDIV needs to be set to a speed were USB doesn't function anymore hence frames will not be detected i.e. no USB detection
-
-  checkUSBAttached();
-  if (previousUSB_CONNECTED != USB_CONNECTED) {
-    usbStateChanged = true;
-    previousUSB_CONNECTED = USB_CONNECTED;
-    debugPrint("USB State changed");
-  }
-
-  if (!USB_CONNECTED) {
-    PM->CPUSEL.bit.CPUDIV = CPUDIVP;
-    delay(990);
-    if (usbStateChanged) {
-      ITimer0.attachInterrupt(updateRate, timerHandler);    
-      waitForZeroSecond();
-      updateDate();
-    }
-//    while (!USB_CONNECTED) { 
-    saveData();
-    PM->CPUSEL.bit.CPUDIV = 0;
-    delay(10);
-//    }
-  } else {
-    if (usbStateChanged) { 
-      PM->CPUSEL.bit.CPUDIV = 0;
-      ITimer0.stopTimer(); 
-    }
-    if (Serial.available()) {
-      readSerialCommands();
-    }
-    
-    analogWrite(PPGVolt, 800);  // Set LED to 2.5V (PWM duty cycle 100%)
-    delay(100);                  // Wait for 100 milliseconds
-    analogWrite(PPGVolt, 0);    // Turn off LED (PWM duty cycle 0%)
-    delay(100);                  // Wait for 100 milliseconds
-    checkUSBAttached();
-  }
-*/
-
+  // put your main code here, to run repeatedly:
 }
