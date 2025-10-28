@@ -1,0 +1,7 @@
+used the adafruit feather M0 for Patch 8.4 debug
+----
+For anything below 2.8V to work a custom Feather M0 bootloader has been made.
+This bootloader sets the lowest possible BOD33 threshold (as required) and increases
+the NVM wait states to 3 in order to still allow 48MHz operation. I also ran the 'set_fuse'
+software but it may no longer be required as the ISR code is now including a contingency to
+set these fuses as well as the bootloader

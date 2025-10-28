@@ -19,7 +19,11 @@ SdFat SD;
 #include <wiring_private.h>
 
 // Sets updates per second
-#define updateRate 45
+#define updateRate 20
+// total number of seconds to sample - WILL NOT WORK IF UNEVEN NUMBER
+// Max is whatever fits into the existing memory (~22K bytes)
+// COMPILER WILL NOT SAY IF YOU GO JUST A LITTLE TOO OVER MEMORY, 70 @ 45Hz WORKS ACCORDING TO COMPILER BUT NOT IN REALITY
+#define secondsToSample 150 //60 max for 45hz rate -- 150 for 20hz rate -- 50 max for 60hz rate
 
 // Bit depth of ADC configuration for PPG and accelerometer
 #define readBits 22
@@ -83,9 +87,6 @@ typedef struct {
   DateTime dt;  // 6 bytes
   singleReading values[updateRate];
 } singleSecond;
-// total number of seconds to sample - WILL NOT WORK IF UNEVEN NUMBER
-// Max is whatever fits into the existing memory (~22K bytes)
-#define secondsToSample 60 //70 max for 45hz rate -- 150 for 20hz rate -- 50 max for 60hz rate
 // main data 
 singleSecond data[secondsToSample];
 // current second reading into {data}
@@ -381,6 +382,7 @@ void updateDate() {
 
 bool updateFlag = false;
 
+singleReading currentData;
 // Interrupt handler for sampling sensor data
 // Throws a flag if we need to save to disk
 void timerHandler() {
@@ -388,6 +390,8 @@ void timerHandler() {
   data[currentSecond].values[currentReading].Xval = readADC(Xout);
   data[currentSecond].values[currentReading].Yval = readADC(Yout);
   data[currentSecond].values[currentReading].Zval = readADC(Zout);
+
+  currentData = data[currentSecond].values[currentReading];
 
   //debugPrint("Reading data for second " + String(currentSecond) + " interval " + String(currentReading));
   currentReading++;
@@ -534,5 +538,9 @@ void loop() {
     readSerialCommands();
   }
 
-  // put your main code here, to run repeatedly:
+  if (updateFlag) {
+//    debugPrint(String(readADC(PPGSensor)));
+    debugPrint(String(currentData.PPGVal) + "," + String(currentData.Xval) + "," + String(currentData.Yval) + "," + String(currentData.Zval));
+    updateFlag = false;
+  }
 }
