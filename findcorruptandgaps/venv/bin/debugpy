@@ -1,0 +1,10 @@
+#!/bin/sh
+'''exec' "/mnt/661cf9a0-a204-495a-8fa3-e7693ae50424/knas/Desktop/Data/Various Creativity/Chandra_NIH_Project/Patch 8.2 code/findcorruptandgaps/venv/bin/python3" "$0" "$@"
+' '''
+# -*- coding: utf-8 -*-
+import re
+import sys
+from debugpy.server.cli import main
+if __name__ == '__main__':
+    sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
+    sys.exit(main())

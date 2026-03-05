@@ -1,0 +1,797 @@
+\doxysection{Main\+\_\+\+DAQ\+\_\+\+PATCH\+\_\+\+ISR.\+ino File Reference}
+\hypertarget{Main__DAQ__PATCH__ISR_8ino}{}\label{Main__DAQ__PATCH__ISR_8ino}\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+{\ttfamily \#include $<$SAMDTimer\+Interrupt.\+h$>$}\newline
+{\ttfamily \#include $<$SPI.\+h$>$}\newline
+{\ttfamily \#include $<$Sd\+Fat\+\_\+\+Adafruit\+\_\+\+Fork.\+h$>$}\newline
+{\ttfamily \#include $<$Ex\+Fat\+Lib/\+Ex\+Fat\+Lib.\+h$>$}\newline
+{\ttfamily \#include $<$wiring\+\_\+private.\+h$>$}\newline
+{\ttfamily \#include "{}RTClib\+Modded/src/\+RTClib.\+h"{}}\newline
+{\ttfamily \#include "{}RTClib\+Modded/src/\+RTClib.\+cpp"{}}\newline
+{\ttfamily \#include "{}RTClib\+Modded/src/\+RTC\+\_\+\+PCF8523.\+cpp"{}}\newline
+\doxysubsubsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structsingleReading}{single\+Reading}}
+\begin{DoxyCompactList}\small\item\em Data structure for sub-\/second readings -\/ 8 bytes size. \end{DoxyCompactList}\item 
+struct \mbox{\hyperlink{structsingleSecond}{single\+Second}}
+\begin{DoxyCompactList}\small\item\em Data structure for each second. \end{DoxyCompactList}\end{DoxyCompactItemize}
+\doxysubsubsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a28d2ba4c66b9ecfbb7364dbd396b656c}{USING\+\_\+\+TIMER\+\_\+\+TC3}}~true
+\begin{DoxyCompactList}\small\item\em SAMD21 Required. \end{DoxyCompactList}\item 
+\#define \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a1b8c0f181fb12d6e0feaca80dc3d760c}{SDCLOCK}}~12000000
+\begin{DoxyCompactList}\small\item\em SD-\/\+Card SPI Speed. \end{DoxyCompactList}\item 
+\#define \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a195fa1c4f831ef8fde744ab46ce5101d}{I2\+CC}}~100000
+\begin{DoxyCompactList}\small\item\em I2C clock speed, default is 100k\+Hz. \end{DoxyCompactList}\item 
+\#define \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a23a6626b555423bccb5c4d3ad4b2f0b9}{BINWRITE}}
+\begin{DoxyCompactList}\small\item\em If defined, saves the data in binary format (More or less required at this stage) \end{DoxyCompactList}\item 
+\#define \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a66d236b462010c6d34722c9d5036aeab}{PREALLOCATE}}
+\begin{DoxyCompactList}\small\item\em If defined, pre-\/allocates a file size in order to minimize write delays (More or less required at this stage) \end{DoxyCompactList}\item 
+\#define \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a23cb5558312747c392e182a81ac08a73}{PREALLOCSIZE}}~1024ULL \texorpdfstring{$\ast$}{*} 1024 \texorpdfstring{$\ast$}{*} 512
+\begin{DoxyCompactList}\small\item\em Defines the pre allocated file size. \end{DoxyCompactList}\item 
+\#define \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_ad72dbcf6d0153db1b8d8a58001feed83}{DEBUG}}
+\begin{DoxyCompactList}\small\item\em Enables SD-\/\+Card data writes even when USB is connected. \end{DoxyCompactList}\item 
+\#define \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a91bfdb64327bd4fbd973ced72a5df242}{update\+Rate}}~20
+\begin{DoxyCompactList}\small\item\em Sets the sample rate, given in samples per second. \end{DoxyCompactList}\item 
+\#define \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_abc249ebbc57f2d60bba8226f0189db72}{seconds\+To\+Sample}}~20
+\begin{DoxyCompactList}\small\item\em Sets the size of the ring buffer, the maximum size is dependent on \mbox{[}\doxylink{Main__DAQ__PATCH__ISR_8ino_a91bfdb64327bd4fbd973ced72a5df242}{update\+Rate}\mbox{]}. The theoretical maximum memory usage is 22K, the compiler DOES NOT RELIABLY TELL YOU if you go over this limit. Reference values are a buffer of 60 seconds for a sample rate of 45Hz, 120 seconds for 20Hz and 50 seconds for 60Hz. \end{DoxyCompactList}\item 
+\#define \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a8158e3a79a52cb03ae880ea61172358f}{read\+Bits}}~22
+\begin{DoxyCompactList}\small\item\em Sets the bit depth to sample at. The default is 22. \end{DoxyCompactList}\item 
+\#define \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a7969027552e9e522c1f3be859fb0eee9}{divider}}~64
+\begin{DoxyCompactList}\small\item\em If read\+Bits is \texorpdfstring{$>$}{>} 16, this sets the divider used to divide down the incoming data to 16 bits. Use divider = 2\texorpdfstring{$^\wedge$}{\string^}(read\+Bits -\/ 16), for 22 bits divider = 64. \end{DoxyCompactList}\item 
+\#define \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a494dae09fb874bec5b8a393b1711c977}{BINFILEPREFIX}}~"{}test"{}
+\begin{DoxyCompactList}\small\item\em Prefix for data save file. \end{DoxyCompactList}\item 
+\#define \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_aea151f12e1a26610aada4be8957cbf32}{CARD\+\_\+\+DETECTED}}~digital\+Read(\mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_aa89a6891b10c392fd52164d76184c294}{pin\+Card\+Detect}})
+\begin{DoxyCompactList}\small\item\em Use this macro to detect whether an SD-\/\+Card is inserted in case of future changes. \end{DoxyCompactList}\item 
+\#define \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a789e9c55e455710ab67e9c4cb1d59880}{USB\+\_\+\+CONNECTED}}~digital\+Read(\mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a3d01f6a6ce36ec7e5f0fbd2a720dfc3b}{pin\+USBDetect}})
+\begin{DoxyCompactList}\small\item\em Macro for detecting VUSB. \end{DoxyCompactList}\end{DoxyCompactItemize}
+\doxysubsubsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+SAMDTimer \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a8e1027cf694327b7eabbe7438232e5f4}{ITimer0}} (TIMER\+\_\+\+TC3)
+\begin{DoxyCompactList}\small\item\em Interrupt timer. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_af00dbc642153ef98501683da5b59abd6}{debug\+Print}} (String \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a6d8b57c69c70194fd3dc6531ac64d359}{data}})
+\begin{DoxyCompactList}\small\item\em Outputs debug data if USB is connected, should be used instead of direct printing. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_aecce8a60b36d42f7399e563048b6cfc6}{set\+CPUSpeed}} (int speed)
+\begin{DoxyCompactList}\small\item\em Sets the CPU clock divisor. \end{DoxyCompactList}\item 
+int \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a336ac1342209db91089f50a545ef8fcd}{read\+ADC}} (byte port)
+\begin{DoxyCompactList}\small\item\em Returns a ADC reading and uses \textbackslash{}rel divider to divide the data down if oversampling. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a767dc12de0d43ee938eaecac689b7a42}{set\+Bin\+File}} ()
+\begin{DoxyCompactList}\small\item\em Looks for the next unused filename with \doxylink{Main__DAQ__PATCH__ISR_8ino_a494dae09fb874bec5b8a393b1711c977}{BINFILEPREFIX} \+\_\+xx.\+bin and puts the result in \doxylink{Main__DAQ__PATCH__ISR_8ino_a95cfdb496e26801c3ad8fb510e7afede}{bin\+File\+Name}. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_afb066f0754a5d99848d149e417fa4dbf}{set\+BODlow}} ()
+\begin{DoxyCompactList}\small\item\em Sets the brown-\/out (automatic restart at too low input voltage) at 1.\+5V. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_ab5147f7c0c083367267b3657e67973da}{disable\+RTCSwitchover}} ()
+\begin{DoxyCompactList}\small\item\em Disables the RTCs automatic switchover from VDD to battery, needed when using a lower VDD. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_af9752a733db0c8e328fee985eaed35cd}{read\+RTCSwitchover}} ()
+\begin{DoxyCompactList}\small\item\em Read / Verify RTC settings. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_ad20897c5c8bd47f5d4005989bead0e55}{reset}} ()
+\begin{DoxyCompactList}\small\item\em Reset function for the SAMD21. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a8c14775243474ea0da9b33baf70e0f1d}{set\+CPUSpeed\+According\+To\+USB}} (bool init=false)
+\begin{DoxyCompactList}\small\item\em Changes the CPU speed according to whether USB is connected or not. When USB is connected, CPU clock divisor is \doxylink{Main__DAQ__PATCH__ISR_8ino_a45d41e5b0a11925cbc95dee5a3804fa3}{CPUDIVHIGH}, if not it is \doxylink{Main__DAQ__PATCH__ISR_8ino_a3e3db9d8ff304eff064576bb4d35dd32}{CPUDIVNOUSB}. \end{DoxyCompactList}\item 
+bool \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a1431572dcc2beb0892bee6ea5bf953ce}{wait\+For\+Card}} (int timeout=1000)
+\begin{DoxyCompactList}\small\item\em Waits for a SD-\/\+Card to be inserted for \mbox{[}timeout\mbox{]} milliseconds before automatically returning. the PPG LED is turned off during the wait in order to visually indicate that an SD-\/\+Card isn\textquotesingle{}t present, when a card is detected the LED is set to \doxylink{Main__DAQ__PATCH__ISR_8ino_a01b88ef4a20d6a4a6fa78eb98f6b6147}{PPGVOut} again. It then uses \doxylink{Main__DAQ__PATCH__ISR_8ino_abf749f820ac8cb78957000d31bd312c2}{wait\+For\+Zero\+Second} to wait for an exact second transition before starting to log readings, and resets \doxylink{Main__DAQ__PATCH__ISR_8ino_a73f19ae05d80df7e0c1035df66c0da86}{current\+Second} and \doxylink{Main__DAQ__PATCH__ISR_8ino_a77e54a4ff833e86978696a3ae5cb6baf}{current\+Reading}. The date/time is being updated and the SD-\/\+Card is tested to make sure it works. Lastly \doxylink{Main__DAQ__PATCH__ISR_8ino_a767dc12de0d43ee938eaecac689b7a42}{set\+Bin\+File} is used to make a new file for data logging. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a45c687ff9927ef7753337e156d6bae66}{enable\+USB}} ()
+\begin{DoxyCompactList}\small\item\em . Enables the USB hardware, not entirely sure whether this is strictly necessary since we do not explicitly disable the USB at any time \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a218e1d157e9d539ac6986f19e27fc2a3}{start\+Serial}} ()
+\begin{DoxyCompactList}\small\item\em Starts the serial USB device. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a4fc01d736fe50cf5b977f755b675f11d}{setup}} ()
+\begin{DoxyCompactList}\small\item\em The main setup, please see \doxysectlink{index_workflow}{Detailed workflow}{1} for details. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a886f0bece1ad0cf1cbec6ad01ffca682}{update\+Date}} ()
+\begin{DoxyCompactList}\small\item\em Retrieve date/time from the RTC and put it in the current position in the data array. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a800c69bd6c729de5f39d8a689be80a79}{timer\+Handler}} ()
+\begin{DoxyCompactList}\small\item\em Interrupt handler for sampling sensor data, logs it into the ringbuffer and updates \doxylink{Main__DAQ__PATCH__ISR_8ino_a77e54a4ff833e86978696a3ae5cb6baf}{current\+Reading} += 1. If \doxylink{Main__DAQ__PATCH__ISR_8ino_a77e54a4ff833e86978696a3ae5cb6baf}{current\+Reading} is at its bound it is set to zero and \doxylink{Main__DAQ__PATCH__ISR_8ino_a73f19ae05d80df7e0c1035df66c0da86}{current\+Second} += 1. If \doxylink{Main__DAQ__PATCH__ISR_8ino_a73f19ae05d80df7e0c1035df66c0da86}{current\+Second} == (\doxylink{Main__DAQ__PATCH__ISR_8ino_abc249ebbc57f2d60bba8226f0189db72}{seconds\+To\+Sample} / 2) (i.\+e. at half the ringbuffer) or \doxylink{Main__DAQ__PATCH__ISR_8ino_a73f19ae05d80df7e0c1035df66c0da86}{current\+Second} == \doxylink{Main__DAQ__PATCH__ISR_8ino_abc249ebbc57f2d60bba8226f0189db72}{seconds\+To\+Sample} (i.\+e. at the upper bound of the buffer), set \doxylink{Main__DAQ__PATCH__ISR_8ino_ab3f87f8a98856d615852ab08b773b0c8}{save\+Flag} to true and indicate which half of the buffer to save through setting \doxylink{Main__DAQ__PATCH__ISR_8ino_ad43ead91a88b4050ed569b662f62b02b}{save\+Low\+Range} accordingly. Resync the date/time with \doxylink{Main__DAQ__PATCH__ISR_8ino_a886f0bece1ad0cf1cbec6ad01ffca682}{update\+Date} and set \doxylink{Main__DAQ__PATCH__ISR_8ino_a3b96d397904e207f62aee6dc5eaf1458}{update\+Flag} to true. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a5b86241374c9a379af845d4adaa170b5}{save\+Data}} ()
+\begin{DoxyCompactList}\small\item\em Check if \doxylink{Main__DAQ__PATCH__ISR_8ino_ab3f87f8a98856d615852ab08b773b0c8}{save\+Flag} is set, if not return immediately. Check if the SD controller can be started, otherwise return and clear \doxylink{Main__DAQ__PATCH__ISR_8ino_ab3f87f8a98856d615852ab08b773b0c8}{save\+Flag} and set \doxylink{Main__DAQ__PATCH__ISR_8ino_a87865789e5cf4cf81de2249d20e72fb6}{save\+Error} Unless DEBUG is set, check if USB is connected and return if so. Set the range of data to set depending on \doxylink{Main__DAQ__PATCH__ISR_8ino_ad43ead91a88b4050ed569b662f62b02b}{save\+Low\+Range}. In order to maximize power efficiency, set the processor speed to max during save. Save as binary or .csv depending on compile-\/time flag. If binary, see if the file is already open and if not open it and pre-\/allocate. Write and flush but do not close file. ~\newline
+~\newline
+Not closing the file and using flush could be a bad move from a power efficiency perspective, but Ex\+Fat is very picky and doesn\textquotesingle{}t seem to work right unless it is done exactly so. Pre-\/allocation on different files without resetting the processor does not work for unknown reasons either. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_abf749f820ac8cb78957000d31bd312c2}{wait\+For\+Zero\+Second}} ()
+\begin{DoxyCompactList}\small\item\em This function waits for the RTC to transition to a new second, used to sync. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_acedc4b81c7f2e04b5a7eb15e2baa9f4c}{read\+Serial\+Commands}} ()
+\begin{DoxyCompactList}\small\item\em Read serial commands sent to the Patch and takes the apropriate action. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a5ccbd6aae0278cd139e736228238d3dd}{error\+Behavior}} ()
+\begin{DoxyCompactList}\small\item\em Defined behaviors when the save\+Error flag is set. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_afe461d27b9c48d5921c00d521181f12f}{loop}} ()
+\begin{DoxyCompactList}\small\item\em Main loop, see \doxysectlink{index_workflow}{Detailed workflow}{1} for details. \end{DoxyCompactList}\end{DoxyCompactItemize}
+\doxysubsubsection*{Variables}
+\begin{DoxyCompactItemize}
+\item 
+Sd\+Fat \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_af7186c0ed9faf692c4abbb3fd945b9f9}{SD}}
+\begin{DoxyCompactList}\small\item\em SDFat main entry point. \end{DoxyCompactList}\item 
+RTC\+\_\+\+PCF8523 \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_adab40bd3cc2c36728a2a34e813a75b88}{rtc}}
+\begin{DoxyCompactList}\small\item\em RTC main class definition. \end{DoxyCompactList}\item 
+uint8\+\_\+t \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a3e3db9d8ff304eff064576bb4d35dd32}{CPUDIVNOUSB}} = 0x6
+\begin{DoxyCompactList}\small\item\em Sets the clock divider used when running in battery mode (No USB detected). Default is 6 (0.\+75\+MHz) \end{DoxyCompactList}\item 
+uint8\+\_\+t \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a45d41e5b0a11925cbc95dee5a3804fa3}{CPUDIVHIGH}} = 0
+\begin{DoxyCompactList}\small\item\em Sets the clock divider used in normal USB mode. Default is 0 (48Mhz) \end{DoxyCompactList}\item 
+String \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a95cfdb496e26801c3ad8fb510e7afede}{bin\+File\+Name}} = "{}test.\+bin"{}
+\begin{DoxyCompactList}\small\item\em Placeholder for the currently used filename ~\newline
+ \end{DoxyCompactList}\item 
+bool \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a87865789e5cf4cf81de2249d20e72fb6}{save\+Error}} = false
+\begin{DoxyCompactList}\small\item\em Set to true if an SD-\/\+Card error has occured. \end{DoxyCompactList}\item 
+const byte \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a9999df5c5460b1d69612b824513fc7a2}{pin\+Test\+Output}} = (25UL)
+\begin{DoxyCompactList}\small\item\em Pin for testing outputs. \end{DoxyCompactList}\item 
+const byte \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a7ccf46af02473cbd7453222a79d55d69}{pin\+Chip\+Select}} = 4
+\begin{DoxyCompactList}\small\item\em CS Select for SD-\/\+Card. \end{DoxyCompactList}\item 
+const byte \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_af36fbaab3afa5b90e150acaa41b3ae0e}{pin\+PPGVolt}} = A0
+\begin{DoxyCompactList}\small\item\em Output pin for PPG LED. \end{DoxyCompactList}\item 
+const byte \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_ac05f72905ff48429621a0bfe597150ae}{pin\+PPGSensor}} = A1
+\begin{DoxyCompactList}\small\item\em Input pin from PPG sensor. \end{DoxyCompactList}\item 
+const byte \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a0d92e91e66d5f9cb08309f02beb4a8ba}{pin\+Xout}} = A4
+\begin{DoxyCompactList}\small\item\em Input pin from accelerometer X. \end{DoxyCompactList}\item 
+const byte \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_ae7833ffb0c59862ba5b81fad42374927}{pin\+Yout}} = A3
+\begin{DoxyCompactList}\small\item\em Input pin from accelerometer y. \end{DoxyCompactList}\item 
+const byte \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a2f04047921cb34ce96f53d6c056fefc6}{pin\+Zout}} = A2
+\begin{DoxyCompactList}\small\item\em Input pin from accelerometer z. \end{DoxyCompactList}\item 
+const byte \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_aa89a6891b10c392fd52164d76184c294}{pin\+Card\+Detect}} = 1
+\begin{DoxyCompactList}\small\item\em Input pin from the SD-\/\+Card switch. \end{DoxyCompactList}\item 
+const byte \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a3d01f6a6ce36ec7e5f0fbd2a720dfc3b}{pin\+USBDetect}} = (0\+UL)
+\begin{DoxyCompactList}\small\item\em Input pin from VUSB. \end{DoxyCompactList}\item 
+const uint16\+\_\+t \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a01b88ef4a20d6a4a6fa78eb98f6b6147}{PPGVOut}} = 1023
+\begin{DoxyCompactList}\small\item\em PWM to use for the given voltage. Default for 2.\+8V is 1023. \end{DoxyCompactList}\item 
+uint8\+\_\+t \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a416f6d0fdd28a1cd08612a42338cafec}{CPUDIVP}} = \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a3e3db9d8ff304eff064576bb4d35dd32}{CPUDIVNOUSB}}
+\begin{DoxyCompactList}\small\item\em Contains the current CPU clock divider. \end{DoxyCompactList}\item 
+\mbox{\hyperlink{structsingleSecond}{single\+Second}} \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a6d8b57c69c70194fd3dc6531ac64d359}{data}} \mbox{[}\mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_abc249ebbc57f2d60bba8226f0189db72}{seconds\+To\+Sample}}\mbox{]}
+\begin{DoxyCompactList}\small\item\em Main ring buffer. \end{DoxyCompactList}\item 
+uint8\+\_\+t \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a73f19ae05d80df7e0c1035df66c0da86}{current\+Second}} = 0
+\begin{DoxyCompactList}\small\item\em Current second position in ring buffer. \end{DoxyCompactList}\item 
+uint8\+\_\+t \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a77e54a4ff833e86978696a3ae5cb6baf}{current\+Reading}} = 0
+\begin{DoxyCompactList}\small\item\em Current sub-\/second position in ring buffer. \end{DoxyCompactList}\item 
+bool \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_ab3f87f8a98856d615852ab08b773b0c8}{save\+Flag}} = false
+\begin{DoxyCompactList}\small\item\em set to true when data is to be saved to SD-\/card \end{DoxyCompactList}\item 
+bool \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_ad43ead91a88b4050ed569b662f62b02b}{save\+Low\+Range}} = true
+\begin{DoxyCompactList}\small\item\em true = save the low range of data (0 -\/ seconds\+To\+Sample / 2), false = save the high range of data ((seconds\+To\+Sample / 2) -\/ seconds\+To\+Sample) \end{DoxyCompactList}\item 
+Ex\+Fat\+File \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a9dcfbdeea20f7f806dd9be48c03a7535}{permanent\+Bin\+File}}
+\begin{DoxyCompactList}\small\item\em Class used for Ex\+Fat SD-\/\+Card file save. \end{DoxyCompactList}\item 
+bool \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_aa039323969b4a9e62c13c5b45053bdea}{new\+File}} = true
+\begin{DoxyCompactList}\small\item\em Set to true when a new file is created. \end{DoxyCompactList}\item 
+uint32\+\_\+t \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_ad7e42eafc75738995e178922d6274e24}{test\+Ramp}} = 0
+\begin{DoxyCompactList}\small\item\em Variable used for ramping tests. \end{DoxyCompactList}\item 
+bool \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a3b96d397904e207f62aee6dc5eaf1458}{update\+Flag}} = false
+\begin{DoxyCompactList}\small\item\em Set to true when a new reading has been logged. \end{DoxyCompactList}\item 
+bool \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a91a8259c1ed04c9f63d66c0d76ca4c34}{allow\+Loop}} = false
+\begin{DoxyCompactList}\small\item\em Set to true if wanting to allow the firmware to process the normal Arduino service loop (once!) even if USB is disconnected. \end{DoxyCompactList}\item 
+int \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_ad062fa0f9c986e55aae8222b016f397a}{old\+Speed}} = 999
+\begin{DoxyCompactList}\small\item\em Placeholder for keeping track of the previous CPU clock divisor so we don\textquotesingle{}t change the CPU speed unnecessarily. \end{DoxyCompactList}\end{DoxyCompactItemize}
+
+
+\doxysubsection{Macro Definition Documentation}
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a494dae09fb874bec5b8a393b1711c977}\label{Main__DAQ__PATCH__ISR_8ino_a494dae09fb874bec5b8a393b1711c977} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!BINFILEPREFIX@{BINFILEPREFIX}}
+\index{BINFILEPREFIX@{BINFILEPREFIX}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{BINFILEPREFIX}{BINFILEPREFIX}}
+{\footnotesize\ttfamily \#define BINFILEPREFIX~"{}test"{}}
+
+
+
+Prefix for data save file. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a23a6626b555423bccb5c4d3ad4b2f0b9}\label{Main__DAQ__PATCH__ISR_8ino_a23a6626b555423bccb5c4d3ad4b2f0b9} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!BINWRITE@{BINWRITE}}
+\index{BINWRITE@{BINWRITE}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{BINWRITE}{BINWRITE}}
+{\footnotesize\ttfamily \#define BINWRITE}
+
+
+
+If defined, saves the data in binary format (More or less required at this stage) 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_aea151f12e1a26610aada4be8957cbf32}\label{Main__DAQ__PATCH__ISR_8ino_aea151f12e1a26610aada4be8957cbf32} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!CARD\_DETECTED@{CARD\_DETECTED}}
+\index{CARD\_DETECTED@{CARD\_DETECTED}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{CARD\_DETECTED}{CARD\_DETECTED}}
+{\footnotesize\ttfamily \#define CARD\+\_\+\+DETECTED~digital\+Read(\mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_aa89a6891b10c392fd52164d76184c294}{pin\+Card\+Detect}})}
+
+
+
+Use this macro to detect whether an SD-\/\+Card is inserted in case of future changes. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_ad72dbcf6d0153db1b8d8a58001feed83}\label{Main__DAQ__PATCH__ISR_8ino_ad72dbcf6d0153db1b8d8a58001feed83} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!DEBUG@{DEBUG}}
+\index{DEBUG@{DEBUG}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{DEBUG}{DEBUG}}
+{\footnotesize\ttfamily \#define DEBUG}
+
+
+
+Enables SD-\/\+Card data writes even when USB is connected. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a7969027552e9e522c1f3be859fb0eee9}\label{Main__DAQ__PATCH__ISR_8ino_a7969027552e9e522c1f3be859fb0eee9} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!divider@{divider}}
+\index{divider@{divider}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{divider}{divider}}
+{\footnotesize\ttfamily \#define divider~64}
+
+
+
+If read\+Bits is \texorpdfstring{$>$}{>} 16, this sets the divider used to divide down the incoming data to 16 bits. Use divider = 2\texorpdfstring{$^\wedge$}{\string^}(read\+Bits -\/ 16), for 22 bits divider = 64. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a195fa1c4f831ef8fde744ab46ce5101d}\label{Main__DAQ__PATCH__ISR_8ino_a195fa1c4f831ef8fde744ab46ce5101d} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!I2CC@{I2CC}}
+\index{I2CC@{I2CC}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{I2CC}{I2CC}}
+{\footnotesize\ttfamily \#define I2\+CC~100000}
+
+
+
+I2C clock speed, default is 100k\+Hz. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a66d236b462010c6d34722c9d5036aeab}\label{Main__DAQ__PATCH__ISR_8ino_a66d236b462010c6d34722c9d5036aeab} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!PREALLOCATE@{PREALLOCATE}}
+\index{PREALLOCATE@{PREALLOCATE}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{PREALLOCATE}{PREALLOCATE}}
+{\footnotesize\ttfamily \#define PREALLOCATE}
+
+
+
+If defined, pre-\/allocates a file size in order to minimize write delays (More or less required at this stage) 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a23cb5558312747c392e182a81ac08a73}\label{Main__DAQ__PATCH__ISR_8ino_a23cb5558312747c392e182a81ac08a73} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!PREALLOCSIZE@{PREALLOCSIZE}}
+\index{PREALLOCSIZE@{PREALLOCSIZE}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{PREALLOCSIZE}{PREALLOCSIZE}}
+{\footnotesize\ttfamily \#define PREALLOCSIZE~1024ULL \texorpdfstring{$\ast$}{*} 1024 \texorpdfstring{$\ast$}{*} 512}
+
+
+
+Defines the pre allocated file size. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a8158e3a79a52cb03ae880ea61172358f}\label{Main__DAQ__PATCH__ISR_8ino_a8158e3a79a52cb03ae880ea61172358f} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!readBits@{readBits}}
+\index{readBits@{readBits}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{readBits}{readBits}}
+{\footnotesize\ttfamily \#define read\+Bits~22}
+
+
+
+Sets the bit depth to sample at. The default is 22. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a1b8c0f181fb12d6e0feaca80dc3d760c}\label{Main__DAQ__PATCH__ISR_8ino_a1b8c0f181fb12d6e0feaca80dc3d760c} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!SDCLOCK@{SDCLOCK}}
+\index{SDCLOCK@{SDCLOCK}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{SDCLOCK}{SDCLOCK}}
+{\footnotesize\ttfamily \#define SDCLOCK~12000000}
+
+
+
+SD-\/\+Card SPI Speed. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_abc249ebbc57f2d60bba8226f0189db72}\label{Main__DAQ__PATCH__ISR_8ino_abc249ebbc57f2d60bba8226f0189db72} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!secondsToSample@{secondsToSample}}
+\index{secondsToSample@{secondsToSample}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{secondsToSample}{secondsToSample}}
+{\footnotesize\ttfamily \#define seconds\+To\+Sample~20}
+
+
+
+Sets the size of the ring buffer, the maximum size is dependent on \mbox{[}\doxylink{Main__DAQ__PATCH__ISR_8ino_a91bfdb64327bd4fbd973ced72a5df242}{update\+Rate}\mbox{]}. The theoretical maximum memory usage is 22K, the compiler DOES NOT RELIABLY TELL YOU if you go over this limit. Reference values are a buffer of 60 seconds for a sample rate of 45Hz, 120 seconds for 20Hz and 50 seconds for 60Hz. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a91bfdb64327bd4fbd973ced72a5df242}\label{Main__DAQ__PATCH__ISR_8ino_a91bfdb64327bd4fbd973ced72a5df242} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!updateRate@{updateRate}}
+\index{updateRate@{updateRate}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{updateRate}{updateRate}}
+{\footnotesize\ttfamily \#define update\+Rate~20}
+
+
+
+Sets the sample rate, given in samples per second. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a789e9c55e455710ab67e9c4cb1d59880}\label{Main__DAQ__PATCH__ISR_8ino_a789e9c55e455710ab67e9c4cb1d59880} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!USB\_CONNECTED@{USB\_CONNECTED}}
+\index{USB\_CONNECTED@{USB\_CONNECTED}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{USB\_CONNECTED}{USB\_CONNECTED}}
+{\footnotesize\ttfamily \#define USB\+\_\+\+CONNECTED~digital\+Read(\mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a3d01f6a6ce36ec7e5f0fbd2a720dfc3b}{pin\+USBDetect}})}
+
+
+
+Macro for detecting VUSB. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a28d2ba4c66b9ecfbb7364dbd396b656c}\label{Main__DAQ__PATCH__ISR_8ino_a28d2ba4c66b9ecfbb7364dbd396b656c} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!USING\_TIMER\_TC3@{USING\_TIMER\_TC3}}
+\index{USING\_TIMER\_TC3@{USING\_TIMER\_TC3}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{USING\_TIMER\_TC3}{USING\_TIMER\_TC3}}
+{\footnotesize\ttfamily \#define USING\+\_\+\+TIMER\+\_\+\+TC3~true}
+
+
+
+SAMD21 Required. 
+
+
+
+\doxysubsection{Function Documentation}
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_af00dbc642153ef98501683da5b59abd6}\label{Main__DAQ__PATCH__ISR_8ino_af00dbc642153ef98501683da5b59abd6} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!debugPrint@{debugPrint}}
+\index{debugPrint@{debugPrint}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{debugPrint()}{debugPrint()}}
+{\footnotesize\ttfamily void debug\+Print (\begin{DoxyParamCaption}\item[{String}]{data }\end{DoxyParamCaption})}
+
+
+
+Outputs debug data if USB is connected, should be used instead of direct printing. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_ab5147f7c0c083367267b3657e67973da}\label{Main__DAQ__PATCH__ISR_8ino_ab5147f7c0c083367267b3657e67973da} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!disableRTCSwitchover@{disableRTCSwitchover}}
+\index{disableRTCSwitchover@{disableRTCSwitchover}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{disableRTCSwitchover()}{disableRTCSwitchover()}}
+{\footnotesize\ttfamily void disable\+RTCSwitchover (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+Disables the RTCs automatic switchover from VDD to battery, needed when using a lower VDD. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a45c687ff9927ef7753337e156d6bae66}\label{Main__DAQ__PATCH__ISR_8ino_a45c687ff9927ef7753337e156d6bae66} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!enableUSB@{enableUSB}}
+\index{enableUSB@{enableUSB}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{enableUSB()}{enableUSB()}}
+{\footnotesize\ttfamily void enable\+USB (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+. Enables the USB hardware, not entirely sure whether this is strictly necessary since we do not explicitly disable the USB at any time 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a5ccbd6aae0278cd139e736228238d3dd}\label{Main__DAQ__PATCH__ISR_8ino_a5ccbd6aae0278cd139e736228238d3dd} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!errorBehavior@{errorBehavior}}
+\index{errorBehavior@{errorBehavior}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{errorBehavior()}{errorBehavior()}}
+{\footnotesize\ttfamily void error\+Behavior (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+Defined behaviors when the save\+Error flag is set. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a8e1027cf694327b7eabbe7438232e5f4}\label{Main__DAQ__PATCH__ISR_8ino_a8e1027cf694327b7eabbe7438232e5f4} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!ITimer0@{ITimer0}}
+\index{ITimer0@{ITimer0}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{ITimer0()}{ITimer0()}}
+{\footnotesize\ttfamily SAMDTimer ITimer0 (\begin{DoxyParamCaption}\item[{TIMER\+\_\+\+TC3}]{ }\end{DoxyParamCaption})}
+
+
+
+Interrupt timer. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_afe461d27b9c48d5921c00d521181f12f}\label{Main__DAQ__PATCH__ISR_8ino_afe461d27b9c48d5921c00d521181f12f} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!loop@{loop}}
+\index{loop@{loop}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{loop()}{loop()}}
+{\footnotesize\ttfamily void loop (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+Main loop, see \doxysectlink{index_workflow}{Detailed workflow}{1} for details. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a336ac1342209db91089f50a545ef8fcd}\label{Main__DAQ__PATCH__ISR_8ino_a336ac1342209db91089f50a545ef8fcd} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!readADC@{readADC}}
+\index{readADC@{readADC}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{readADC()}{readADC()}}
+{\footnotesize\ttfamily int read\+ADC (\begin{DoxyParamCaption}\item[{byte}]{port }\end{DoxyParamCaption})}
+
+
+
+Returns a ADC reading and uses \textbackslash{}rel divider to divide the data down if oversampling. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_af9752a733db0c8e328fee985eaed35cd}\label{Main__DAQ__PATCH__ISR_8ino_af9752a733db0c8e328fee985eaed35cd} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!readRTCSwitchover@{readRTCSwitchover}}
+\index{readRTCSwitchover@{readRTCSwitchover}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{readRTCSwitchover()}{readRTCSwitchover()}}
+{\footnotesize\ttfamily void read\+RTCSwitchover (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+Read / Verify RTC settings. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_acedc4b81c7f2e04b5a7eb15e2baa9f4c}\label{Main__DAQ__PATCH__ISR_8ino_acedc4b81c7f2e04b5a7eb15e2baa9f4c} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!readSerialCommands@{readSerialCommands}}
+\index{readSerialCommands@{readSerialCommands}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{readSerialCommands()}{readSerialCommands()}}
+{\footnotesize\ttfamily void read\+Serial\+Commands (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+Read serial commands sent to the Patch and takes the apropriate action. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_ad20897c5c8bd47f5d4005989bead0e55}\label{Main__DAQ__PATCH__ISR_8ino_ad20897c5c8bd47f5d4005989bead0e55} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!reset@{reset}}
+\index{reset@{reset}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{reset()}{reset()}}
+{\footnotesize\ttfamily void reset (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+Reset function for the SAMD21. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a5b86241374c9a379af845d4adaa170b5}\label{Main__DAQ__PATCH__ISR_8ino_a5b86241374c9a379af845d4adaa170b5} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!saveData@{saveData}}
+\index{saveData@{saveData}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{saveData()}{saveData()}}
+{\footnotesize\ttfamily void save\+Data (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+Check if \doxylink{Main__DAQ__PATCH__ISR_8ino_ab3f87f8a98856d615852ab08b773b0c8}{save\+Flag} is set, if not return immediately. Check if the SD controller can be started, otherwise return and clear \doxylink{Main__DAQ__PATCH__ISR_8ino_ab3f87f8a98856d615852ab08b773b0c8}{save\+Flag} and set \doxylink{Main__DAQ__PATCH__ISR_8ino_a87865789e5cf4cf81de2249d20e72fb6}{save\+Error} Unless DEBUG is set, check if USB is connected and return if so. Set the range of data to set depending on \doxylink{Main__DAQ__PATCH__ISR_8ino_ad43ead91a88b4050ed569b662f62b02b}{save\+Low\+Range}. In order to maximize power efficiency, set the processor speed to max during save. Save as binary or .csv depending on compile-\/time flag. If binary, see if the file is already open and if not open it and pre-\/allocate. Write and flush but do not close file. ~\newline
+~\newline
+Not closing the file and using flush could be a bad move from a power efficiency perspective, but Ex\+Fat is very picky and doesn\textquotesingle{}t seem to work right unless it is done exactly so. Pre-\/allocation on different files without resetting the processor does not work for unknown reasons either. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a767dc12de0d43ee938eaecac689b7a42}\label{Main__DAQ__PATCH__ISR_8ino_a767dc12de0d43ee938eaecac689b7a42} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!setBinFile@{setBinFile}}
+\index{setBinFile@{setBinFile}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{setBinFile()}{setBinFile()}}
+{\footnotesize\ttfamily void set\+Bin\+File (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+Looks for the next unused filename with \doxylink{Main__DAQ__PATCH__ISR_8ino_a494dae09fb874bec5b8a393b1711c977}{BINFILEPREFIX} \+\_\+xx.\+bin and puts the result in \doxylink{Main__DAQ__PATCH__ISR_8ino_a95cfdb496e26801c3ad8fb510e7afede}{bin\+File\+Name}. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_afb066f0754a5d99848d149e417fa4dbf}\label{Main__DAQ__PATCH__ISR_8ino_afb066f0754a5d99848d149e417fa4dbf} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!setBODlow@{setBODlow}}
+\index{setBODlow@{setBODlow}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{setBODlow()}{setBODlow()}}
+{\footnotesize\ttfamily void set\+BODlow (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+Sets the brown-\/out (automatic restart at too low input voltage) at 1.\+5V. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_aecce8a60b36d42f7399e563048b6cfc6}\label{Main__DAQ__PATCH__ISR_8ino_aecce8a60b36d42f7399e563048b6cfc6} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!setCPUSpeed@{setCPUSpeed}}
+\index{setCPUSpeed@{setCPUSpeed}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{setCPUSpeed()}{setCPUSpeed()}}
+{\footnotesize\ttfamily void set\+CPUSpeed (\begin{DoxyParamCaption}\item[{int}]{speed }\end{DoxyParamCaption})}
+
+
+
+Sets the CPU clock divisor. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a8c14775243474ea0da9b33baf70e0f1d}\label{Main__DAQ__PATCH__ISR_8ino_a8c14775243474ea0da9b33baf70e0f1d} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!setCPUSpeedAccordingToUSB@{setCPUSpeedAccordingToUSB}}
+\index{setCPUSpeedAccordingToUSB@{setCPUSpeedAccordingToUSB}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{setCPUSpeedAccordingToUSB()}{setCPUSpeedAccordingToUSB()}}
+{\footnotesize\ttfamily void set\+CPUSpeed\+According\+To\+USB (\begin{DoxyParamCaption}\item[{bool}]{init = {\ttfamily false} }\end{DoxyParamCaption})}
+
+
+
+Changes the CPU speed according to whether USB is connected or not. When USB is connected, CPU clock divisor is \doxylink{Main__DAQ__PATCH__ISR_8ino_a45d41e5b0a11925cbc95dee5a3804fa3}{CPUDIVHIGH}, if not it is \doxylink{Main__DAQ__PATCH__ISR_8ino_a3e3db9d8ff304eff064576bb4d35dd32}{CPUDIVNOUSB}. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a4fc01d736fe50cf5b977f755b675f11d}\label{Main__DAQ__PATCH__ISR_8ino_a4fc01d736fe50cf5b977f755b675f11d} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!setup@{setup}}
+\index{setup@{setup}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{setup()}{setup()}}
+{\footnotesize\ttfamily void setup (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+The main setup, please see \doxysectlink{index_workflow}{Detailed workflow}{1} for details. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a218e1d157e9d539ac6986f19e27fc2a3}\label{Main__DAQ__PATCH__ISR_8ino_a218e1d157e9d539ac6986f19e27fc2a3} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!startSerial@{startSerial}}
+\index{startSerial@{startSerial}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{startSerial()}{startSerial()}}
+{\footnotesize\ttfamily void start\+Serial (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+Starts the serial USB device. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a800c69bd6c729de5f39d8a689be80a79}\label{Main__DAQ__PATCH__ISR_8ino_a800c69bd6c729de5f39d8a689be80a79} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!timerHandler@{timerHandler}}
+\index{timerHandler@{timerHandler}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{timerHandler()}{timerHandler()}}
+{\footnotesize\ttfamily void timer\+Handler (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+Interrupt handler for sampling sensor data, logs it into the ringbuffer and updates \doxylink{Main__DAQ__PATCH__ISR_8ino_a77e54a4ff833e86978696a3ae5cb6baf}{current\+Reading} += 1. If \doxylink{Main__DAQ__PATCH__ISR_8ino_a77e54a4ff833e86978696a3ae5cb6baf}{current\+Reading} is at its bound it is set to zero and \doxylink{Main__DAQ__PATCH__ISR_8ino_a73f19ae05d80df7e0c1035df66c0da86}{current\+Second} += 1. If \doxylink{Main__DAQ__PATCH__ISR_8ino_a73f19ae05d80df7e0c1035df66c0da86}{current\+Second} == (\doxylink{Main__DAQ__PATCH__ISR_8ino_abc249ebbc57f2d60bba8226f0189db72}{seconds\+To\+Sample} / 2) (i.\+e. at half the ringbuffer) or \doxylink{Main__DAQ__PATCH__ISR_8ino_a73f19ae05d80df7e0c1035df66c0da86}{current\+Second} == \doxylink{Main__DAQ__PATCH__ISR_8ino_abc249ebbc57f2d60bba8226f0189db72}{seconds\+To\+Sample} (i.\+e. at the upper bound of the buffer), set \doxylink{Main__DAQ__PATCH__ISR_8ino_ab3f87f8a98856d615852ab08b773b0c8}{save\+Flag} to true and indicate which half of the buffer to save through setting \doxylink{Main__DAQ__PATCH__ISR_8ino_ad43ead91a88b4050ed569b662f62b02b}{save\+Low\+Range} accordingly. Resync the date/time with \doxylink{Main__DAQ__PATCH__ISR_8ino_a886f0bece1ad0cf1cbec6ad01ffca682}{update\+Date} and set \doxylink{Main__DAQ__PATCH__ISR_8ino_a3b96d397904e207f62aee6dc5eaf1458}{update\+Flag} to true. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a886f0bece1ad0cf1cbec6ad01ffca682}\label{Main__DAQ__PATCH__ISR_8ino_a886f0bece1ad0cf1cbec6ad01ffca682} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!updateDate@{updateDate}}
+\index{updateDate@{updateDate}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{updateDate()}{updateDate()}}
+{\footnotesize\ttfamily void update\+Date (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+Retrieve date/time from the RTC and put it in the current position in the data array. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a1431572dcc2beb0892bee6ea5bf953ce}\label{Main__DAQ__PATCH__ISR_8ino_a1431572dcc2beb0892bee6ea5bf953ce} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!waitForCard@{waitForCard}}
+\index{waitForCard@{waitForCard}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{waitForCard()}{waitForCard()}}
+{\footnotesize\ttfamily bool wait\+For\+Card (\begin{DoxyParamCaption}\item[{int}]{timeout = {\ttfamily 1000} }\end{DoxyParamCaption})}
+
+
+
+Waits for a SD-\/\+Card to be inserted for \mbox{[}timeout\mbox{]} milliseconds before automatically returning. the PPG LED is turned off during the wait in order to visually indicate that an SD-\/\+Card isn\textquotesingle{}t present, when a card is detected the LED is set to \doxylink{Main__DAQ__PATCH__ISR_8ino_a01b88ef4a20d6a4a6fa78eb98f6b6147}{PPGVOut} again. It then uses \doxylink{Main__DAQ__PATCH__ISR_8ino_abf749f820ac8cb78957000d31bd312c2}{wait\+For\+Zero\+Second} to wait for an exact second transition before starting to log readings, and resets \doxylink{Main__DAQ__PATCH__ISR_8ino_a73f19ae05d80df7e0c1035df66c0da86}{current\+Second} and \doxylink{Main__DAQ__PATCH__ISR_8ino_a77e54a4ff833e86978696a3ae5cb6baf}{current\+Reading}. The date/time is being updated and the SD-\/\+Card is tested to make sure it works. Lastly \doxylink{Main__DAQ__PATCH__ISR_8ino_a767dc12de0d43ee938eaecac689b7a42}{set\+Bin\+File} is used to make a new file for data logging. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_abf749f820ac8cb78957000d31bd312c2}\label{Main__DAQ__PATCH__ISR_8ino_abf749f820ac8cb78957000d31bd312c2} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!waitForZeroSecond@{waitForZeroSecond}}
+\index{waitForZeroSecond@{waitForZeroSecond}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{waitForZeroSecond()}{waitForZeroSecond()}}
+{\footnotesize\ttfamily void wait\+For\+Zero\+Second (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+This function waits for the RTC to transition to a new second, used to sync. 
+
+
+
+\doxysubsection{Variable Documentation}
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a91a8259c1ed04c9f63d66c0d76ca4c34}\label{Main__DAQ__PATCH__ISR_8ino_a91a8259c1ed04c9f63d66c0d76ca4c34} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!allowLoop@{allowLoop}}
+\index{allowLoop@{allowLoop}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{allowLoop}{allowLoop}}
+{\footnotesize\ttfamily bool allow\+Loop = false}
+
+
+
+Set to true if wanting to allow the firmware to process the normal Arduino service loop (once!) even if USB is disconnected. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a95cfdb496e26801c3ad8fb510e7afede}\label{Main__DAQ__PATCH__ISR_8ino_a95cfdb496e26801c3ad8fb510e7afede} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!binFileName@{binFileName}}
+\index{binFileName@{binFileName}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{binFileName}{binFileName}}
+{\footnotesize\ttfamily String bin\+File\+Name = "{}test.\+bin"{}}
+
+
+
+Placeholder for the currently used filename ~\newline
+ 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a45d41e5b0a11925cbc95dee5a3804fa3}\label{Main__DAQ__PATCH__ISR_8ino_a45d41e5b0a11925cbc95dee5a3804fa3} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!CPUDIVHIGH@{CPUDIVHIGH}}
+\index{CPUDIVHIGH@{CPUDIVHIGH}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{CPUDIVHIGH}{CPUDIVHIGH}}
+{\footnotesize\ttfamily uint8\+\_\+t CPUDIVHIGH = 0}
+
+
+
+Sets the clock divider used in normal USB mode. Default is 0 (48Mhz) 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a3e3db9d8ff304eff064576bb4d35dd32}\label{Main__DAQ__PATCH__ISR_8ino_a3e3db9d8ff304eff064576bb4d35dd32} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!CPUDIVNOUSB@{CPUDIVNOUSB}}
+\index{CPUDIVNOUSB@{CPUDIVNOUSB}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{CPUDIVNOUSB}{CPUDIVNOUSB}}
+{\footnotesize\ttfamily uint8\+\_\+t CPUDIVNOUSB = 0x6}
+
+
+
+Sets the clock divider used when running in battery mode (No USB detected). Default is 6 (0.\+75\+MHz) 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a416f6d0fdd28a1cd08612a42338cafec}\label{Main__DAQ__PATCH__ISR_8ino_a416f6d0fdd28a1cd08612a42338cafec} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!CPUDIVP@{CPUDIVP}}
+\index{CPUDIVP@{CPUDIVP}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{CPUDIVP}{CPUDIVP}}
+{\footnotesize\ttfamily uint8\+\_\+t CPUDIVP = \mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_a3e3db9d8ff304eff064576bb4d35dd32}{CPUDIVNOUSB}}}
+
+
+
+Contains the current CPU clock divider. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a77e54a4ff833e86978696a3ae5cb6baf}\label{Main__DAQ__PATCH__ISR_8ino_a77e54a4ff833e86978696a3ae5cb6baf} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!currentReading@{currentReading}}
+\index{currentReading@{currentReading}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{currentReading}{currentReading}}
+{\footnotesize\ttfamily uint8\+\_\+t current\+Reading = 0}
+
+
+
+Current sub-\/second position in ring buffer. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a73f19ae05d80df7e0c1035df66c0da86}\label{Main__DAQ__PATCH__ISR_8ino_a73f19ae05d80df7e0c1035df66c0da86} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!currentSecond@{currentSecond}}
+\index{currentSecond@{currentSecond}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{currentSecond}{currentSecond}}
+{\footnotesize\ttfamily uint8\+\_\+t current\+Second = 0}
+
+
+
+Current second position in ring buffer. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a6d8b57c69c70194fd3dc6531ac64d359}\label{Main__DAQ__PATCH__ISR_8ino_a6d8b57c69c70194fd3dc6531ac64d359} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!data@{data}}
+\index{data@{data}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{data}{data}}
+{\footnotesize\ttfamily \mbox{\hyperlink{structsingleSecond}{single\+Second}} data\mbox{[}\mbox{\hyperlink{Main__DAQ__PATCH__ISR_8ino_abc249ebbc57f2d60bba8226f0189db72}{seconds\+To\+Sample}}\mbox{]}}
+
+
+
+Main ring buffer. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_aa039323969b4a9e62c13c5b45053bdea}\label{Main__DAQ__PATCH__ISR_8ino_aa039323969b4a9e62c13c5b45053bdea} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!newFile@{newFile}}
+\index{newFile@{newFile}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{newFile}{newFile}}
+{\footnotesize\ttfamily bool new\+File = true}
+
+
+
+Set to true when a new file is created. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_ad062fa0f9c986e55aae8222b016f397a}\label{Main__DAQ__PATCH__ISR_8ino_ad062fa0f9c986e55aae8222b016f397a} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!oldSpeed@{oldSpeed}}
+\index{oldSpeed@{oldSpeed}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{oldSpeed}{oldSpeed}}
+{\footnotesize\ttfamily int old\+Speed = 999}
+
+
+
+Placeholder for keeping track of the previous CPU clock divisor so we don\textquotesingle{}t change the CPU speed unnecessarily. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a9dcfbdeea20f7f806dd9be48c03a7535}\label{Main__DAQ__PATCH__ISR_8ino_a9dcfbdeea20f7f806dd9be48c03a7535} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!permanentBinFile@{permanentBinFile}}
+\index{permanentBinFile@{permanentBinFile}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{permanentBinFile}{permanentBinFile}}
+{\footnotesize\ttfamily Ex\+Fat\+File permanent\+Bin\+File}
+
+
+
+Class used for Ex\+Fat SD-\/\+Card file save. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_aa89a6891b10c392fd52164d76184c294}\label{Main__DAQ__PATCH__ISR_8ino_aa89a6891b10c392fd52164d76184c294} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!pinCardDetect@{pinCardDetect}}
+\index{pinCardDetect@{pinCardDetect}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{pinCardDetect}{pinCardDetect}}
+{\footnotesize\ttfamily const byte pin\+Card\+Detect = 1}
+
+
+
+Input pin from the SD-\/\+Card switch. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a7ccf46af02473cbd7453222a79d55d69}\label{Main__DAQ__PATCH__ISR_8ino_a7ccf46af02473cbd7453222a79d55d69} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!pinChipSelect@{pinChipSelect}}
+\index{pinChipSelect@{pinChipSelect}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{pinChipSelect}{pinChipSelect}}
+{\footnotesize\ttfamily const byte pin\+Chip\+Select = 4}
+
+
+
+CS Select for SD-\/\+Card. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_ac05f72905ff48429621a0bfe597150ae}\label{Main__DAQ__PATCH__ISR_8ino_ac05f72905ff48429621a0bfe597150ae} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!pinPPGSensor@{pinPPGSensor}}
+\index{pinPPGSensor@{pinPPGSensor}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{pinPPGSensor}{pinPPGSensor}}
+{\footnotesize\ttfamily const byte pin\+PPGSensor = A1}
+
+
+
+Input pin from PPG sensor. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_af36fbaab3afa5b90e150acaa41b3ae0e}\label{Main__DAQ__PATCH__ISR_8ino_af36fbaab3afa5b90e150acaa41b3ae0e} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!pinPPGVolt@{pinPPGVolt}}
+\index{pinPPGVolt@{pinPPGVolt}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{pinPPGVolt}{pinPPGVolt}}
+{\footnotesize\ttfamily const byte pin\+PPGVolt = A0}
+
+
+
+Output pin for PPG LED. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a9999df5c5460b1d69612b824513fc7a2}\label{Main__DAQ__PATCH__ISR_8ino_a9999df5c5460b1d69612b824513fc7a2} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!pinTestOutput@{pinTestOutput}}
+\index{pinTestOutput@{pinTestOutput}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{pinTestOutput}{pinTestOutput}}
+{\footnotesize\ttfamily const byte pin\+Test\+Output = (25UL)}
+
+
+
+Pin for testing outputs. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a3d01f6a6ce36ec7e5f0fbd2a720dfc3b}\label{Main__DAQ__PATCH__ISR_8ino_a3d01f6a6ce36ec7e5f0fbd2a720dfc3b} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!pinUSBDetect@{pinUSBDetect}}
+\index{pinUSBDetect@{pinUSBDetect}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{pinUSBDetect}{pinUSBDetect}}
+{\footnotesize\ttfamily const byte pin\+USBDetect = (0\+UL)}
+
+
+
+Input pin from VUSB. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a0d92e91e66d5f9cb08309f02beb4a8ba}\label{Main__DAQ__PATCH__ISR_8ino_a0d92e91e66d5f9cb08309f02beb4a8ba} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!pinXout@{pinXout}}
+\index{pinXout@{pinXout}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{pinXout}{pinXout}}
+{\footnotesize\ttfamily const byte pin\+Xout = A4}
+
+
+
+Input pin from accelerometer X. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_ae7833ffb0c59862ba5b81fad42374927}\label{Main__DAQ__PATCH__ISR_8ino_ae7833ffb0c59862ba5b81fad42374927} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!pinYout@{pinYout}}
+\index{pinYout@{pinYout}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{pinYout}{pinYout}}
+{\footnotesize\ttfamily const byte pin\+Yout = A3}
+
+
+
+Input pin from accelerometer y. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a2f04047921cb34ce96f53d6c056fefc6}\label{Main__DAQ__PATCH__ISR_8ino_a2f04047921cb34ce96f53d6c056fefc6} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!pinZout@{pinZout}}
+\index{pinZout@{pinZout}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{pinZout}{pinZout}}
+{\footnotesize\ttfamily const byte pin\+Zout = A2}
+
+
+
+Input pin from accelerometer z. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a01b88ef4a20d6a4a6fa78eb98f6b6147}\label{Main__DAQ__PATCH__ISR_8ino_a01b88ef4a20d6a4a6fa78eb98f6b6147} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!PPGVOut@{PPGVOut}}
+\index{PPGVOut@{PPGVOut}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{PPGVOut}{PPGVOut}}
+{\footnotesize\ttfamily const uint16\+\_\+t PPGVOut = 1023}
+
+
+
+PWM to use for the given voltage. Default for 2.\+8V is 1023. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_adab40bd3cc2c36728a2a34e813a75b88}\label{Main__DAQ__PATCH__ISR_8ino_adab40bd3cc2c36728a2a34e813a75b88} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!rtc@{rtc}}
+\index{rtc@{rtc}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{rtc}{rtc}}
+{\footnotesize\ttfamily RTC\+\_\+\+PCF8523 rtc}
+
+
+
+RTC main class definition. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a87865789e5cf4cf81de2249d20e72fb6}\label{Main__DAQ__PATCH__ISR_8ino_a87865789e5cf4cf81de2249d20e72fb6} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!saveError@{saveError}}
+\index{saveError@{saveError}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{saveError}{saveError}}
+{\footnotesize\ttfamily bool save\+Error = false}
+
+
+
+Set to true if an SD-\/\+Card error has occured. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_ab3f87f8a98856d615852ab08b773b0c8}\label{Main__DAQ__PATCH__ISR_8ino_ab3f87f8a98856d615852ab08b773b0c8} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!saveFlag@{saveFlag}}
+\index{saveFlag@{saveFlag}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{saveFlag}{saveFlag}}
+{\footnotesize\ttfamily bool save\+Flag = false}
+
+
+
+set to true when data is to be saved to SD-\/card 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_ad43ead91a88b4050ed569b662f62b02b}\label{Main__DAQ__PATCH__ISR_8ino_ad43ead91a88b4050ed569b662f62b02b} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!saveLowRange@{saveLowRange}}
+\index{saveLowRange@{saveLowRange}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{saveLowRange}{saveLowRange}}
+{\footnotesize\ttfamily bool save\+Low\+Range = true}
+
+
+
+true = save the low range of data (0 -\/ seconds\+To\+Sample / 2), false = save the high range of data ((seconds\+To\+Sample / 2) -\/ seconds\+To\+Sample) 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_af7186c0ed9faf692c4abbb3fd945b9f9}\label{Main__DAQ__PATCH__ISR_8ino_af7186c0ed9faf692c4abbb3fd945b9f9} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!SD@{SD}}
+\index{SD@{SD}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{SD}{SD}}
+{\footnotesize\ttfamily Sd\+Fat SD}
+
+
+
+SDFat main entry point. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_ad7e42eafc75738995e178922d6274e24}\label{Main__DAQ__PATCH__ISR_8ino_ad7e42eafc75738995e178922d6274e24} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!testRamp@{testRamp}}
+\index{testRamp@{testRamp}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{testRamp}{testRamp}}
+{\footnotesize\ttfamily uint32\+\_\+t test\+Ramp = 0}
+
+
+
+Variable used for ramping tests. 
+
+\Hypertarget{Main__DAQ__PATCH__ISR_8ino_a3b96d397904e207f62aee6dc5eaf1458}\label{Main__DAQ__PATCH__ISR_8ino_a3b96d397904e207f62aee6dc5eaf1458} 
+\index{Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}!updateFlag@{updateFlag}}
+\index{updateFlag@{updateFlag}!Main\_DAQ\_PATCH\_ISR.ino@{Main\_DAQ\_PATCH\_ISR.ino}}
+\doxysubsubsection{\texorpdfstring{updateFlag}{updateFlag}}
+{\footnotesize\ttfamily bool update\+Flag = false}
+
+
+
+Set to true when a new reading has been logged. 
+

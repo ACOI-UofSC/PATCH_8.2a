@@ -1,0 +1,5 @@
+var searchData=
+[
+  ['testramp_0',['testRamp',['../dd/da9/Main__DAQ__PATCH__ISR_8ino.html#ad7e42eafc75738995e178922d6274e24',1,'Main_DAQ_PATCH_ISR.ino']]],
+  ['timerhandler_1',['timerHandler',['../dd/da9/Main__DAQ__PATCH__ISR_8ino.html#a800c69bd6c729de5f39d8a689be80a79',1,'Main_DAQ_PATCH_ISR.ino']]]
+];

@@ -1,0 +1,61 @@
+\chapter{Patch main file}
+\hypertarget{index}{}\label{index}\index{Patch main file@{Patch main file}}
+\hypertarget{index_Introduction}{}\doxysection{\texorpdfstring{Introduction}{Introduction}}\label{index_Introduction}
+This code samples the PPG using interrupts and saves the data in binary format. The code is designed to run the SAMD21 at 2.\+5V without an additional clock battery. Hardware USB detection is performed by sampling the VUSB line ~\newline
+and a LOW will reduce the processors speed below that which is required for normal USB operations in order to save power. Hardware SD-\/\+Card detection is performed by checking the physical card switch. ~\newline
+A ring buffer is used for sampling and the previously sampled half of the buffer is saved to disk whenever the read counter passes either the half-\/read mark or the upper bounds. ~\newline
+\hypertarget{index_Notes}{}\doxysection{\texorpdfstring{Notes}{Notes}}\label{index_Notes}
+
+\begin{DoxyItemize}
+\item In order to allow for low voltage operation a modified version of the Adafruit Feather M0 bootloader is used where NVM states are set to 3 (longer delay in between FLASH read/write due to the lower power) and the Brown-\/out ~\newline
+detection is set to 1.\+7V (Automatic restart at too low power detection).
+\item This code demands that the SD-\/\+Card is formatted Ex\+Fat as it (seemingly) is the best option for smooth read/write SD-\/\+Card operations and uses a modified version of the SDFAT library version SDFAT ADAFRUIT FORK The library needs to have the added line \textquotesingle{}\#define SDFAT\+\_\+\+FILE\+\_\+\+TYPE 3\textquotesingle{} in Sd\+Fat\+Config.\+h around line \texorpdfstring{$\sim$}{\string~}50
+\item The code uses a modified version of the RTC library in order to disable the automatic switchover from VDD to battery power, this is necessary due to the fact that a fresh clock battery will output a higher voltage than ~\newline
+ the internal 2.\+5V regulators. 
+\end{DoxyItemize}\hypertarget{index_issues}{}\doxysection{\texorpdfstring{Known issues}{Known issues}}\label{index_issues}
+
+\begin{DoxyItemize}
+\item There is still an issue with a 2 second gap in data reads happening every once in a while, the source is still unknown.
+\item Pre-\/allocation will not work twice even on different files unless device is restarted in between. Assuming something is up with the SD-\/\+Card or SPI still being open but simply resetting the CPU for now to overcome it. 
+\end{DoxyItemize}\hypertarget{index_Settings}{}\doxysection{\texorpdfstring{Settings}{Settings}}\label{index_Settings}
+The code uses a number of \#defines to modify compile-\/time settings;
+\begin{DoxyItemize}
+\item PPGDEBUGOUT -\/ Enables serial output of the PPG data in order to do live monitoring
+\item BINWRITE -\/ If defined, saves the data in binary format (More or less required at this stage)
+\item PREALLOCATE -\/ If defined, pre-\/allocates a file size in order to minimize write delays (More or less required at this stage)
+\item PREALLOCSIZE -\/ Defines the pre allocated file size
+\item DEBUG -\/ Enables SD-\/\+Card data writes even when USB is connected
+\item CPUDIVNOUSB -\/ Sets the clock divider used when running in battery mode (No USB detected). Default is 6 (0.\+75\+MHz)
+\item CPUDIVHIGH -\/ Sets the clock divider used in normal USB mode. Default is 0 (48Mhz)
+\item update\+Rate -\/ Sets the sample rate, given in samples per second
+\item seconds\+To\+Samples -\/ Sets the size of the ring buffer, the maximum size is dependent on \mbox{[}/ref update\+Rate\mbox{]}. The theoretical maximum memory usage is 22K, the compiler DOES NOT RELIABLY TELL YOU if you go over this limit. Reference values are a buffer of 60 seconds for a sample rate of 45Hz, 120 seconds for 20Hz and 50 seconds for 60Hz
+\item read\+Bits -\/ Sets the bit depth to sample at. The default is 22
+\item divider -\/ If read\+Bits is \texorpdfstring{$>$}{>} 16, this sets the divider used to divide down the incoming data to 16 bits. Use divider = 2\texorpdfstring{$^\wedge$}{\string^}(read\+Bits -\/ 16), for 22 bits divider = 64 
+\end{DoxyItemize}\hypertarget{index_workflow}{}\doxysection{\texorpdfstring{Detailed workflow}{Detailed workflow}}\label{index_workflow}
+Setup\+:
+\begin{DoxyEnumerate}
+\item Set High CPU speed (Safeguard against dirty reboot at low CPU speed) \mbox{[}\doxylink{Main__DAQ__PATCH__ISR_8ino_aecce8a60b36d42f7399e563048b6cfc6}{set\+CPUSpeed}\mbox{]}
+\item Set the brown-\/out low voltage detection to 1.\+7V (Needed to run the device at 1.\+8V) \mbox{[}\doxylink{Main__DAQ__PATCH__ISR_8ino_afb066f0754a5d99848d149e417fa4dbf}{set\+BODlow}\mbox{]}
+\item Set port input/output modes, note the use of pin\+Peripheral as the SAMD21 has a multitude of functions per pin. ~\newline
+ pin\+PPGVolt is purposefully left out in order to leave it in PWM mode.
+\item Set the ADC resolution to 22-\/Bits \mbox{[}analog\+Read\+Resolution\mbox{]} (\doxylink{Main__DAQ__PATCH__ISR_8ino_a8158e3a79a52cb03ae880ea61172358f}{read\+Bits})
+\item Check if USB is connected, if it is enable the USB hardware and the USB Serial device, otherwise do not. ~\newline
+ Leaving the USB turned off during battery operation is cruical as the device is slowed down to a speed incompatible with USB communcations, any attempt to use the USB port here can hang the processor.
+\item Initialize the RTC module over I2C and wait until a proper response is received. A hardware error with the RTC will make the device stop here.
+\item Disable the RTC battery switchover \mbox{[}\doxylink{Main__DAQ__PATCH__ISR_8ino_ab5147f7c0c083367267b3657e67973da}{disable\+RTCSwitchover}\mbox{]} and verify it \mbox{[}\doxylink{Main__DAQ__PATCH__ISR_8ino_af9752a733db0c8e328fee985eaed35cd}{read\+RTCSwitchover}\mbox{]}
+\item Enable PPG LED and wait in order to signal restart
+\item Attempt initiation of SD-\/\+Card, a failure here will still allow execution to continue in order to receive USB commands to set the clock etc and does initiate the SPI hardware (?)
+\item Modify CPU speed in accordance to whether USB is plugged in or not \mbox{[}\doxylink{Main__DAQ__PATCH__ISR_8ino_a8c14775243474ea0da9b33baf70e0f1d}{set\+CPUSpeed\+According\+To\+USB}\mbox{]}
+\item Run another standard SD-\/\+Card check, this is necessary as it will set various flags etc. \mbox{[}\doxylink{Main__DAQ__PATCH__ISR_8ino_a1431572dcc2beb0892bee6ea5bf953ce}{wait\+For\+Card}\mbox{]}
+\item Start the data read interrupt
+\end{DoxyEnumerate}
+
+Loop\+:
+\begin{DoxyEnumerate}
+\item Modify the CPU speed according to the state of the USB cable \mbox{[}\doxylink{Main__DAQ__PATCH__ISR_8ino_a8c14775243474ea0da9b33baf70e0f1d}{set\+CPUSpeed\+According\+To\+USB}\mbox{]}
+\item Check if we still have a SD-\/\+Card, if we do, continue to save data \mbox{[}\doxylink{Main__DAQ__PATCH__ISR_8ino_a5b86241374c9a379af845d4adaa170b5}{save\+Data}\mbox{]}. If we do not, and we do not have USB plugged in (Patch running on low non-\/\+USB compatible speed), make sure to turn all USB communications off. ~\newline
+ Run the standard SD-\/\+Card check \mbox{[}\doxylink{Main__DAQ__PATCH__ISR_8ino_a1431572dcc2beb0892bee6ea5bf953ce}{wait\+For\+Card}\mbox{]}
+\item Check if USB is connected or if the \mbox{[}\doxylink{Main__DAQ__PATCH__ISR_8ino_a91a8259c1ed04c9f63d66c0d76ca4c34}{allow\+Loop}\mbox{]} flag is set. If neither of these are true, jump back to the beginning of the function. ~\newline
+ While in battery mode we deliberately prevent the execution of the main Arduino service loop as it performs USB functions that do nothing but draw extra power while USB is not functional.
+\item If USB is indeed connected, check if there are any USB commands that need to be taken care of before executing the main Arudino service loop \mbox{[}\doxylink{Main__DAQ__PATCH__ISR_8ino_acedc4b81c7f2e04b5a7eb15e2baa9f4c}{read\+Serial\+Commands}\mbox{]} 
+\end{DoxyEnumerate}

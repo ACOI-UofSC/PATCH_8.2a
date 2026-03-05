@@ -183,7 +183,7 @@ int main(void) {
         // Voltage threshold is about 1.5V + LEVEL * 34mV. See "Electrical Characteristics" in datasheet.
         // 39 is about 2.8V, and is a standard measured value in the datasheet.
         // External flash chips usually require at least 2.7V.
-        SYSCTRL_BOD33_LEVEL(0) |
+        SYSCTRL_BOD33_LEVEL(25) |		// KARL MOD 2026-03-04 (sets BOD to 2.35)
         // Since the program is waiting for the voltage to rise,
         // don't reset the microcontroller if the voltage is too low.
         SYSCTRL_BOD33_ACTION_NONE |

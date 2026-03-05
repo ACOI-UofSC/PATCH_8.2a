@@ -5,6 +5,7 @@ import sys
 import wave
 import struct
 from io import TextIOWrapper
+from logging import exception
 from typing import BinaryIO
 
 from PySide6.QtWidgets import QApplication, QWidget
@@ -65,19 +66,35 @@ def chunkPointerToEpoch(chunk) -> (float, String):
     minute = int(chunk[4])
     second = int(chunk[5])
 
+    if (year < 2025): year = 2025
+    if (year > datetime.datetime.now().year): year = datetime.datetime.now().year
+    if (month < 1): month = 1
+    if (month > 12): month = 12
+    if (day < 1): day = 1
+    if (day > 31): day = 31
+    if (hour < 0): hour = 0
+    if (hour > 23): hour = 23
+    if (minute < 0): minute = 0;
+    if (minute > 59): minute = 59;
+    if (second < 0): second  = 0;
+    if (second > 59): second = 59
+
     dt = datetime.datetime(year, month, day, hour, minute, second)
     epoch = dt.timestamp()
 
     return epoch, dateTimeString
 
 def endShow(chunknum, file : BinaryIO) -> (float, String):
-    file.seek(binaryFileBlockSize * (chunknum - 2), os.SEEK_SET)
-    chunk = file.read(binaryFileBlockSize)
-    global epochEnd
-    epochEnd, toWrite = chunkPointerToEpoch(chunk)
-    addDebug("Ending at " + toWrite)
-    addDebug("Total epoch seconds " + str(epochEnd - epochStart))
-    addDebug("Total epoch hours " + str( (((epochEnd - epochStart) / 60) / 60) ))
+    try:
+        file.seek(binaryFileBlockSize * (chunknum - 2), os.SEEK_SET)
+        chunk = file.read(binaryFileBlockSize)
+        global epochEnd
+        epochEnd, toWrite = chunkPointerToEpoch(chunk)
+        addDebug("Ending at " + toWrite)
+        addDebug("Total epoch seconds " + str(epochEnd - epochStart))
+        addDebug("Total epoch hours " + str( (((epochEnd - epochStart) / 60) / 60) ))
+    except Exception as N:
+        pass
     return epochEnd, toWrite
 
 
@@ -99,6 +116,15 @@ def openFile(name, csvFile):
             chunkNum += 1
             print("Reading chunk no " + str(chunkNum))
             chunk = file.read(binaryFileBlockSize)
+
+            empty = True
+            for a in chunk:
+                if (a != 0):
+                    empty = False
+                    break
+            if (empty):
+                break
+
 
             if beginning:
                 epochStart, toWrite = chunkPointerToEpoch(chunk)
@@ -129,11 +155,15 @@ def openFile(name, csvFile):
                 csvFile.write("\n")
             if not chunk:
                 break
-        endShow(chunkNum, file)
+        try:
+            endShow(chunkNum, file)
+        except Exception as N:
+            pass
         file.close()
         if writewav:
             wav_file.writeframes(struct.pack("<h", wavbuffer))
         return chunk
+
     except Exception as N:
         endShow(chunkNum, file)
         file.close()

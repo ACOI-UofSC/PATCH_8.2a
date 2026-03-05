@@ -8,7 +8,7 @@ void setup() {
   SerialUSB.println(F("Fuse settings before:"));
   SerialUSB.println((*(uint32_t*)NVMCTRL_USER), HEX);         // Display the current user word 0 fuse settings
   SerialUSB.println((*(uint32_t*)(NVMCTRL_USER + 4)), HEX);   // Display the current user word 1 fuse settings
-  uint32_t userWord0 = *((uint32_t*)NVMCTRL_USER);            // Read fuses for user word 0
+/*  uint32_t userWord0 = *((uint32_t*)NVMCTRL_USER);            // Read fuses for user word 0
   uint32_t userWord1 = *((uint32_t*)(NVMCTRL_USER + 4));      // Read fuses for user word 1
   NVMCTRL->CTRLB.bit.CACHEDIS = 1;                            // Disable the cache
   NVMCTRL->ADDR.reg = NVMCTRL_AUX0_ADDRESS / 2;               // Set the address
@@ -31,6 +31,7 @@ void setup() {
   SerialUSB.println(F("Fuse settings after:"));
   SerialUSB.println((*(uint32_t*)NVMCTRL_USER), HEX);         // Display the current user word 0 fuse settings
   SerialUSB.println((*(uint32_t*)(NVMCTRL_USER + 4)), HEX);   // Display the current user word 1 fuse settings
+  */
 }
 
 void loop() {}
